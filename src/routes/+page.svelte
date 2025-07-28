@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { X, Search, Clock, Users, Settings, Edit } from 'lucide-svelte';
+	import { X, Search, Clock, Users, Settings, Edit, Eye, EyeOff } from 'lucide-svelte';
 
 	// Types
 	interface Stop {
@@ -8,6 +8,7 @@
 		name: string;
 		nickname?: string; // Optional nickname field
 		routes: Route[];
+		ignoredRoutes?: string[]; // Array of route IDs to ignore
 	}
 
 	interface Route {
@@ -222,6 +223,7 @@
 							code: stop.code,
 							name: data[0].stop.name,
 							nickname: stop.nickname, // Preserve nickname during refresh
+							ignoredRoutes: stop.ignoredRoutes, // Preserve ignored routes during refresh
 							routes: data.map((route: any) => ({
 								id: route.route.id,
 								title: route.route.title,
@@ -344,6 +346,47 @@
 		if (selectedStop && selectedStop.code === stopCode) {
 			selectedStop = stops.find(s => s.code === stopCode) || selectedStop;
 		}
+	}
+
+	// Route ignoring functions
+	function toggleRouteIgnore(stopCode: string, routeId: string) {
+		stops = stops.map(stop => {
+			if (stop.code === stopCode) {
+				const ignoredRoutes = stop.ignoredRoutes || [];
+				const isIgnored = ignoredRoutes.includes(routeId);
+				
+				if (isIgnored) {
+					// Remove from ignored routes
+					const newIgnoredRoutes = ignoredRoutes.filter(id => id !== routeId);
+					return {
+						...stop,
+						ignoredRoutes: newIgnoredRoutes.length > 0 ? newIgnoredRoutes : undefined
+					};
+				} else {
+					// Add to ignored routes
+					return {
+						...stop,
+						ignoredRoutes: [...ignoredRoutes, routeId]
+					};
+				}
+			}
+			return stop;
+		});
+		saveStops();
+		
+		// Update selectedStop to reflect the changes immediately
+		if (selectedStop && selectedStop.code === stopCode) {
+			selectedStop = stops.find(s => s.code === stopCode) || selectedStop;
+		}
+	}
+
+	function isRouteIgnored(stopCode: string, routeId: string): boolean {
+		const stop = stops.find(s => s.code === stopCode);
+		return stop?.ignoredRoutes?.includes(routeId) || false;
+	}
+
+	function getVisibleRoutes(stop: Stop): Route[] {
+		return stop.routes.filter(route => !isRouteIgnored(stop.code, route.id));
 	}
 
 	// Drag and drop functions
@@ -575,7 +618,7 @@
 						</div>
 						
 						<div class="space-y-3">
-							{#each stop.routes as route}
+							{#each getVisibleRoutes(stop) as route}
 								{@const nextPrediction = getNextPrediction(route.predictions)}
 								{#if nextPrediction}
 									<div class="flex items-center justify-between">
@@ -743,12 +786,31 @@
 				</div>
 
 				<div class="space-y-6">
-					{#each selectedStop.routes as route}
-						<div class="border border-gray-200 rounded-lg p-4">
-							<div class="mb-4">
-								<h3 class="font-medium text-lg text-gray-900">{route.id}</h3>
-								<p class="text-sm text-gray-600">{route.title}</p>
-								<p class="text-xs text-gray-500 mt-1">{route.description}</p>
+					{#each selectedStop!.routes as route}
+						{@const isIgnored = isRouteIgnored(selectedStop!.code, route.id)}
+						<div class="border border-gray-200 rounded-lg p-4 {isIgnored ? 'bg-gray-50 opacity-75' : ''}">
+							<div class="flex justify-between items-start mb-4">
+								<div class="flex-1">
+									<div class="flex items-center gap-2">
+										<h3 class="font-medium text-lg text-gray-900">{route.id}</h3>
+										{#if isIgnored}
+											<span class="text-xs bg-gray-300 text-gray-600 px-2 py-1 rounded">Ignored</span>
+										{/if}
+									</div>
+									<p class="text-sm text-gray-600">{route.title}</p>
+									<p class="text-xs text-gray-500 mt-1">{route.description}</p>
+								</div>
+								<button
+									on:click={() => toggleRouteIgnore(selectedStop!.code, route.id)}
+									class="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+									title={isIgnored ? 'Show route' : 'Hide route'}
+								>
+									{#if isIgnored}
+										<EyeOff class="w-4 h-4" />
+									{:else}
+										<Eye class="w-4 h-4" />
+									{/if}
+								</button>
 							</div>
 
 							{#if route.predictions.length > 0}
