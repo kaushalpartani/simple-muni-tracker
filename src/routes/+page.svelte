@@ -335,12 +335,9 @@
 		{#if stops.length > 0}
 			<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
 				{#each stops as stop (stop.code)}
-					<div 
-						class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow cursor-pointer" 
+					<button 
+						class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow text-left" 
 						on:click={() => openModal(stop)}
-						on:keydown={(e) => e.key === 'Enter' && openModal(stop)}
-						role="button"
-						tabindex="0"
 					>
 						<div class="flex justify-between items-start mb-4">
 							<div>
@@ -350,6 +347,7 @@
 							<button
 								on:click|stopPropagation={() => removeStop(stop.code)}
 								class="text-gray-400 hover:text-red-500 p-1"
+								type="button"
 							>
 								<X class="w-4 h-4" />
 							</button>
@@ -372,7 +370,7 @@
 								{/if}
 							{/each}
 						</div>
-					</div>
+					</button>
 				{/each}
 			</div>
 		{:else}
@@ -388,19 +386,16 @@
 {#if showSettingsModal}
 	<div 
 		class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" 
-		on:click={closeSettingsModal}
-		on:keydown={(e) => e.key === 'Escape' && closeSettingsModal()}
 		role="dialog"
 		aria-modal="true"
-		tabindex="-1"
+		aria-labelledby="settings-title"
 	>
 		<div 
 			class="bg-white rounded-lg max-w-md w-full p-6" 
-			on:click|stopPropagation
 			role="document"
 		>
 			<div class="flex justify-between items-center mb-6">
-				<h2 class="text-xl font-medium text-gray-900">Settings</h2>
+				<h2 id="settings-title" class="text-xl font-medium text-gray-900">Settings</h2>
 				<button on:click={closeSettingsModal} class="text-gray-400 hover:text-gray-600">
 					<X class="w-6 h-6" />
 				</button>
@@ -445,21 +440,18 @@
 {#if showModal && selectedStop}
 	<div 
 		class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" 
-		on:click={closeModal}
-		on:keydown={(e) => e.key === 'Escape' && closeModal()}
 		role="dialog"
 		aria-modal="true"
-		tabindex="-1"
+		aria-labelledby="stop-details-title"
 	>
 		<div 
 			class="bg-white rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto" 
-			on:click|stopPropagation
 			role="document"
 		>
 			<div class="p-6">
 				<div class="flex justify-between items-start mb-6">
 					<div>
-						<h2 class="text-2xl font-medium text-gray-900">{selectedStop.name}</h2>
+						<h2 id="stop-details-title" class="text-2xl font-medium text-gray-900">{selectedStop.name}</h2>
 						<p class="text-gray-600">Stop {selectedStop.code}</p>
 					</div>
 					<button on:click={closeModal} class="text-gray-400 hover:text-gray-600">
