@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { X, Search, Clock, Users, Settings } from 'lucide-svelte';
+	import { X, Search, Clock, Users, Settings, Edit } from 'lucide-svelte';
 
 	// Types
 	interface Stop {
 		code: string;
 		name: string;
+		nickname?: string; // Optional nickname field
 		routes: Route[];
 	}
 
@@ -32,10 +33,14 @@
 	let selectedStop: Stop | null = null;
 	let showModal = false;
 	let showSettingsModal = false;
-	let autoRefreshInterval: number | null = null;
+	let autoRefreshInterval: ReturnType<typeof setInterval> | null = null;
 	let lastRefreshTime = new Date();
 	let refreshIntervalSeconds = 10;
 	let reorderMode = false;
+
+	// Nickname editing state
+	let editingNickname: string | null = null;
+	let nicknameInput = '';
 
 	// Drag and drop state
 	let draggedIndex: number | null = null;
@@ -216,6 +221,7 @@
 						const updatedStop: Stop = {
 							code: stop.code,
 							name: data[0].stop.name,
+							nickname: stop.nickname, // Preserve nickname during refresh
 							routes: data.map((route: any) => ({
 								id: route.route.id,
 								title: route.route.title,
@@ -293,6 +299,53 @@
 		reorderMode = !reorderMode;
 	}
 
+	// Nickname editing functions
+	function startEditingNickname(stopCode: string) {
+		const stop = stops.find(s => s.code === stopCode);
+		if (stop) {
+			editingNickname = stopCode;
+			nicknameInput = stop.nickname || '';
+		}
+	}
+
+	function saveNickname() {
+		if (editingNickname) {
+			stops = stops.map(stop => 
+				stop.code === editingNickname 
+					? { ...stop, nickname: nicknameInput.trim() || undefined }
+					: stop
+			);
+			saveStops();
+			
+			// Update selectedStop to reflect the changes immediately
+			if (selectedStop && selectedStop.code === editingNickname) {
+				selectedStop = stops.find(s => s.code === editingNickname) || selectedStop;
+			}
+			
+			editingNickname = null;
+			nicknameInput = '';
+		}
+	}
+
+	function cancelNicknameEdit() {
+		editingNickname = null;
+		nicknameInput = '';
+	}
+
+	function removeNickname(stopCode: string) {
+		stops = stops.map(stop => 
+			stop.code === stopCode 
+				? { ...stop, nickname: undefined }
+				: stop
+		);
+		saveStops();
+		
+		// Update selectedStop to reflect the changes immediately
+		if (selectedStop && selectedStop.code === stopCode) {
+			selectedStop = stops.find(s => s.code === stopCode) || selectedStop;
+		}
+	}
+
 	// Drag and drop functions
 	function handleDragStart(e: DragEvent, index: number) {
 		if (!reorderMode) return;
@@ -320,7 +373,7 @@
 	}
 
 	function handleDrop(e: DragEvent, index: number) {
-		if (!reorderMode) return;
+		if (!reorderMode || draggedIndex === null) return;
 		
 		e.preventDefault();
 		if (draggedIndex !== index) {
@@ -505,7 +558,12 @@
 					>
 						<div class="flex justify-between items-start mb-4">
 							<div>
-								<h3 class="font-medium text-gray-900">{stop.name}</h3>
+								<h3 class="font-medium text-gray-900">
+									{stop.nickname || stop.name}
+									{#if stop.nickname}
+										<span class="text-sm text-gray-500 ml-1">({stop.name})</span>
+									{/if}
+								</h3>
 								<p class="text-sm text-gray-500">Stop {stop.code}</p>
 							</div>
 							<button
@@ -619,9 +677,65 @@
 		>
 			<div class="p-6">
 				<div class="flex justify-between items-start mb-6">
-					<div>
-						<h2 class="text-2xl font-medium text-gray-900">{selectedStop.name}</h2>
-						<p class="text-gray-600">Stop {selectedStop.code}</p>
+					<div class="flex-1">
+						{#if editingNickname === selectedStop.code}
+							<div class="space-y-3">
+								<input
+									type="text"
+									bind:value={nicknameInput}
+									placeholder="Enter nickname"
+									class="w-full px-3 py-2 text-lg border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+									on:keydown={(e) => {
+										if (e.key === 'Enter') saveNickname();
+										if (e.key === 'Escape') cancelNicknameEdit();
+									}}
+									on:blur={saveNickname}
+								/>
+								<div class="flex gap-2">
+									<button
+										on:click={saveNickname}
+										class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-red-700"
+									>
+										Save
+									</button>
+									<button
+										on:click={cancelNicknameEdit}
+										class="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400"
+									>
+										Cancel
+									</button>
+								</div>
+							</div>
+						{:else}
+							<div>
+								<h2 class="text-2xl font-medium text-gray-900">
+									{selectedStop.nickname || selectedStop.name}
+									{#if selectedStop.nickname}
+										<span class="text-lg text-gray-500 ml-2">({selectedStop.name})</span>
+									{/if}
+								</h2>
+								<p class="text-gray-600">Stop {selectedStop.code}</p>
+								<div class="flex items-center gap-3 mt-3">
+									<button
+										on:click={() => startEditingNickname(selectedStop.code)}
+										class="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-800"
+										title="Edit nickname"
+									>
+										<Edit class="w-4 h-4" />
+										{selectedStop.nickname ? 'Edit' : 'Add'} Nickname
+									</button>
+									{#if selectedStop.nickname}
+										<button
+											on:click={() => removeNickname(selectedStop.code)}
+											class="text-sm text-red-600 hover:text-red-800"
+											title="Remove nickname"
+										>
+											Remove Nickname
+										</button>
+									{/if}
+								</div>
+							</div>
+						{/if}
 					</div>
 					<button on:click={closeModal} class="text-gray-400 hover:text-gray-600">
 						<X class="w-6 h-6" />
