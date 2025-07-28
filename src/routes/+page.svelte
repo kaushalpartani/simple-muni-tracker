@@ -386,7 +386,17 @@
 	}
 
 	function getVisibleRoutes(stop: Stop): Route[] {
-		return stop.routes.filter(route => !isRouteIgnored(stop.code, route.id));
+		const visibleRoutes = stop.routes.filter(route => !isRouteIgnored(stop.code, route.id));
+		
+		// Sort routes by soonest arrival time
+		return visibleRoutes.sort((a, b) => {
+			// Get the earliest prediction for each route
+			const aEarliest = a.predictions.length > 0 ? Math.min(...a.predictions.map(p => p.minutes)) : Infinity;
+			const bEarliest = b.predictions.length > 0 ? Math.min(...b.predictions.map(p => p.minutes)) : Infinity;
+			
+			// "Now" (0 minutes) should be considered earliest
+			return aEarliest - bEarliest;
+		});
 	}
 
 	// Drag and drop functions
