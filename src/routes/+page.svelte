@@ -36,6 +36,13 @@
 	let lastRefreshTime = new Date();
 	let refreshIntervalSeconds = 10;
 
+	// Drag and drop state
+	let draggedIndex: number | null = null;
+	let draggedOverIndex: number | null = null;
+	let isDragging = false;
+	let touchStartY = 0;
+	let touchStartIndex = -1;
+
 	// API configuration - using our server-side proxy
 	const API_BASE = '/api/muni';
 
@@ -279,6 +286,103 @@
 	function formatLastRefresh(): string {
 		return lastRefreshTime.toLocaleTimeString();
 	}
+
+	// Drag and drop functions
+	function handleDragStart(e: DragEvent, index: number) {
+		if (e.dataTransfer) {
+			e.dataTransfer.effectAllowed = 'move';
+			e.dataTransfer.setData('text/plain', index.toString());
+		}
+		draggedIndex = index;
+		isDragging = true;
+	}
+
+	function handleDragOver(e: DragEvent, index: number) {
+		e.preventDefault();
+		if (e.dataTransfer) {
+			e.dataTransfer.dropEffect = 'move';
+		}
+		draggedOverIndex = index;
+	}
+
+	function handleDragLeave() {
+		draggedOverIndex = null;
+	}
+
+	function handleDrop(e: DragEvent, index: number) {
+		e.preventDefault();
+		
+		if (draggedIndex !== null && draggedIndex !== index) {
+			const newStops = [...stops];
+			const [draggedItem] = newStops.splice(draggedIndex, 1);
+			newStops.splice(index, 0, draggedItem);
+			stops = newStops;
+			saveStops();
+		}
+		
+		draggedIndex = null;
+		draggedOverIndex = null;
+		isDragging = false;
+	}
+
+	function handleDragEnd() {
+		draggedIndex = null;
+		draggedOverIndex = null;
+		isDragging = false;
+	}
+
+	// Touch event handlers for mobile
+	function handleTouchStart(e: TouchEvent, index: number) {
+		touchStartY = e.touches[0].clientY;
+		touchStartIndex = index;
+	}
+
+	function handleTouchMove(e: TouchEvent, index: number) {
+		if (touchStartIndex === -1) return;
+		
+		e.preventDefault();
+		const touchY = e.touches[0].clientY;
+		const deltaY = touchY - touchStartY;
+		
+		// Only start dragging if moved more than 10px
+		if (Math.abs(deltaY) > 10) {
+			draggedIndex = touchStartIndex;
+			isDragging = true;
+			
+			// Get all card elements and find the one under the touch
+			const cards = document.querySelectorAll('[data-stop-index]');
+			let targetIndex = touchStartIndex;
+			
+			for (let i = 0; i < cards.length; i++) {
+				const card = cards[i] as HTMLElement;
+				const rect = card.getBoundingClientRect();
+				
+				if (touchY >= rect.top && touchY <= rect.bottom) {
+					targetIndex = parseInt(card.getAttribute('data-stop-index') || '0');
+					break;
+				}
+			}
+			
+			if (targetIndex !== draggedOverIndex) {
+				draggedOverIndex = targetIndex;
+			}
+		}
+	}
+
+	function handleTouchEnd(e: TouchEvent, index: number) {
+		if (draggedIndex !== null && draggedOverIndex !== null && draggedIndex !== draggedOverIndex) {
+			const newStops = [...stops];
+			const [draggedItem] = newStops.splice(draggedIndex, 1);
+			newStops.splice(draggedOverIndex, 0, draggedItem);
+			stops = newStops;
+			saveStops();
+		}
+		
+		draggedIndex = null;
+		draggedOverIndex = null;
+		isDragging = false;
+		touchStartIndex = -1;
+	}
 </script>
 
 <svelte:head>
@@ -356,13 +460,23 @@
 		<!-- Stops Grid -->
 		{#if stops.length > 0}
 			<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-				{#each stops as stop (stop.code)}
+				{#each stops as stop, index (stop.code)}
 					<div 
-						class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow cursor-pointer" 
+						class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-all duration-200 cursor-pointer relative {draggedIndex === index ? 'opacity-50 scale-95 shadow-lg' : ''} {draggedOverIndex === index ? 'border-primary border-2' : ''}"
 						on:click={() => openModal(stop)}
 						on:keydown={(e) => e.key === 'Enter' && openModal(stop)}
 						role="button"
 						tabindex="0"
+						draggable="true"
+						on:dragstart={(e) => handleDragStart(e, index)}
+						on:dragover={(e) => handleDragOver(e, index)}
+						on:dragleave={handleDragLeave}
+						on:drop={(e) => handleDrop(e, index)}
+						on:dragend={handleDragEnd}
+						on:touchstart={(e) => handleTouchStart(e, index)}
+						on:touchmove={(e) => handleTouchMove(e, index)}
+						on:touchend={(e) => handleTouchEnd(e, index)}
+						data-stop-index={index}
 					>
 						<div class="flex justify-between items-start mb-4">
 							<div>
