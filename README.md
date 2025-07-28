@@ -1,2 +1,3 @@
-# simple-muni-tracker
-A clean interface for tracking muni stops you care about
+# Simple Muni Tracker
+
+A vibe-coded app that allows a user to track muni stops and their next busses.
