@@ -39,6 +39,26 @@
 	// API configuration - using our server-side proxy
 	const API_BASE = '/api/muni';
 
+	// Scroll management
+	function disableScroll() {
+		if (typeof document !== 'undefined') {
+			document.body.style.overflow = 'hidden';
+		}
+	}
+
+	function enableScroll() {
+		if (typeof document !== 'undefined') {
+			document.body.style.overflow = '';
+		}
+	}
+
+	// Reactive statements to handle modal state changes
+	$: if (showModal || showSettingsModal) {
+		disableScroll();
+	} else {
+		enableScroll();
+	}
+
 	// Load saved stops and settings from localStorage
 	onMount(() => {
 		const saved = localStorage.getItem('muni-stops');
@@ -63,6 +83,8 @@
 		if (autoRefreshInterval) {
 			clearInterval(autoRefreshInterval);
 		}
+		// Re-enable scroll when component is destroyed
+		enableScroll();
 	});
 
 	// Start auto-refresh
