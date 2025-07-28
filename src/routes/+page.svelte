@@ -110,7 +110,6 @@
 		autoRefreshInterval = setInterval(async () => {
 			if (stops.length > 0 && !loading) {
 				await refreshAll();
-				lastRefreshTime = new Date();
 			}
 		}, refreshIntervalSeconds * 1000);
 	}
@@ -246,6 +245,7 @@
 		}
 		saveStops();
 		loading = false;
+		lastRefreshTime = new Date(); // Add this line
 	}
 
 	// Format minutes
