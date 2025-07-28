@@ -580,7 +580,7 @@
 								{#if nextPrediction}
 									<div class="flex items-center justify-between">
 										<div>
-											<p class="font-medium text-gray-900">Route {route.id}</p>
+											<p class="font-medium text-gray-900">{route.id}</p>
 											<p class="text-sm text-gray-600">{nextPrediction.direction}</p>
 										</div>
 										<div class="text-right">
@@ -746,7 +746,7 @@
 					{#each selectedStop.routes as route}
 						<div class="border border-gray-200 rounded-lg p-4">
 							<div class="mb-4">
-								<h3 class="font-medium text-lg text-gray-900">Route {route.id}</h3>
+								<h3 class="font-medium text-lg text-gray-900">{route.id}</h3>
 								<p class="text-sm text-gray-600">{route.title}</p>
 								<p class="text-xs text-gray-500 mt-1">{route.description}</p>
 							</div>
