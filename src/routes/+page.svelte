@@ -35,6 +35,7 @@
 	let autoRefreshInterval: number | null = null;
 	let lastRefreshTime = new Date();
 	let refreshIntervalSeconds = 10;
+	let reorderMode = false;
 
 	// Drag and drop state
 	let draggedIndex: number | null = null;
@@ -287,8 +288,15 @@
 		return lastRefreshTime.toLocaleTimeString();
 	}
 
+	// Toggle reorder mode
+	function toggleReorderMode() {
+		reorderMode = !reorderMode;
+	}
+
 	// Drag and drop functions
 	function handleDragStart(e: DragEvent, index: number) {
+		if (!reorderMode) return;
+		
 		if (e.dataTransfer) {
 			e.dataTransfer.effectAllowed = 'move';
 			e.dataTransfer.setData('text/plain', index.toString());
@@ -298,6 +306,8 @@
 	}
 
 	function handleDragOver(e: DragEvent, index: number) {
+		if (!reorderMode) return;
+		
 		e.preventDefault();
 		if (e.dataTransfer) {
 			e.dataTransfer.dropEffect = 'move';
@@ -310,9 +320,10 @@
 	}
 
 	function handleDrop(e: DragEvent, index: number) {
-		e.preventDefault();
+		if (!reorderMode) return;
 		
-		if (draggedIndex !== null && draggedIndex !== index) {
+		e.preventDefault();
+		if (draggedIndex !== index) {
 			const newStops = [...stops];
 			const [draggedItem] = newStops.splice(draggedIndex, 1);
 			newStops.splice(index, 0, draggedItem);
@@ -333,31 +344,35 @@
 
 	// Touch event handlers for mobile
 	function handleTouchStart(e: TouchEvent, index: number) {
+		if (!reorderMode) return;
+		
 		touchStartY = e.touches[0].clientY;
 		touchStartIndex = index;
+		draggedIndex = index;
+		isDragging = true;
 	}
 
 	function handleTouchMove(e: TouchEvent, index: number) {
-		if (touchStartIndex === -1) return;
+		if (!reorderMode || touchStartIndex === -1) return;
 		
 		e.preventDefault();
 		const touchY = e.touches[0].clientY;
+		const touchX = e.touches[0].clientX;
 		const deltaY = touchY - touchStartY;
 		
 		// Only start dragging if moved more than 10px
 		if (Math.abs(deltaY) > 10) {
-			draggedIndex = touchStartIndex;
-			isDragging = true;
-			
 			// Get all card elements and find the one under the touch
 			const cards = document.querySelectorAll('[data-stop-index]');
-			let targetIndex = touchStartIndex;
+			let targetIndex = draggedIndex; // Use draggedIndex instead of touchStartIndex
 			
 			for (let i = 0; i < cards.length; i++) {
 				const card = cards[i] as HTMLElement;
 				const rect = card.getBoundingClientRect();
 				
-				if (touchY >= rect.top && touchY <= rect.bottom) {
+				// Check if touch is within the card bounds (both X and Y)
+				if (touchX >= rect.left && touchX <= rect.right && 
+					touchY >= rect.top && touchY <= rect.bottom) {
 					targetIndex = parseInt(card.getAttribute('data-stop-index') || '0');
 					break;
 				}
@@ -370,6 +385,8 @@
 	}
 
 	function handleTouchEnd(e: TouchEvent, index: number) {
+		if (!reorderMode) return;
+		
 		if (draggedIndex !== null && draggedOverIndex !== null && draggedIndex !== draggedOverIndex) {
 			const newStops = [...stops];
 			const [draggedItem] = newStops.splice(draggedIndex, 1);
@@ -454,6 +471,14 @@
 						<span class="ml-2">• Last updated: {formatLastRefresh()}</span>
 					{/if}
 				</div>
+
+				<!-- Reorder toggle button -->
+				<button
+					on:click={toggleReorderMode}
+					class="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors {reorderMode ? 'bg-primary text-white border-primary hover:bg-red-700' : 'bg-white text-gray-700'}"
+				>
+					{reorderMode ? 'Exit Reorder Mode' : 'Reorder Tiles'}
+				</button>
 			</div>
 		{/if}
 
@@ -462,12 +487,12 @@
 			<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
 				{#each stops as stop, index (stop.code)}
 					<div 
-						class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-all duration-200 cursor-pointer relative {draggedIndex === index ? 'opacity-50 scale-95 shadow-lg' : ''} {draggedOverIndex === index ? 'border-primary border-2' : ''}"
-						on:click={() => openModal(stop)}
-						on:keydown={(e) => e.key === 'Enter' && openModal(stop)}
+						class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-all duration-200 cursor-pointer relative {reorderMode ? 'cursor-grab active:cursor-grabbing' : ''} {draggedIndex === index ? 'opacity-50 scale-95 shadow-lg' : ''} {draggedOverIndex === index ? 'border-primary border-2' : ''}"
+						on:click={() => !reorderMode && openModal(stop)}
+						on:keydown={(e) => e.key === 'Enter' && !reorderMode && openModal(stop)}
 						role="button"
 						tabindex="0"
-						draggable="true"
+						draggable={reorderMode}
 						on:dragstart={(e) => handleDragStart(e, index)}
 						on:dragover={(e) => handleDragOver(e, index)}
 						on:dragleave={handleDragLeave}
