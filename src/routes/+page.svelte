@@ -266,18 +266,18 @@
 <div class="min-h-screen bg-gray-50">
 	<div class="max-w-4xl mx-auto px-4 py-8">
 		<!-- Header with Settings Gear -->
-		<header class="text-center mb-12 relative">
+		<header class="text-center mb-8 md:mb-12 relative px-4">
 			<!-- Settings Gear -->
 			<button
 				on:click={openSettingsModal}
 				class="absolute left-0 top-0 p-2 text-gray-400 hover:text-gray-600 transition-colors"
 				title="Settings"
 			>
-				<Settings class="w-6 h-6" />
+				<Settings class="w-5 h-5 md:w-6 md:h-6" />
 			</button>
 			
-			<h1 class="text-4xl font-light text-gray-900 mb-2">Simple Muni Tracker</h1>
-			<p class="text-gray-600">Track your favorite MUNI stops</p>
+			<h1 class="text-2xl md:text-3xl lg:text-4xl font-light text-gray-900 mb-2 leading-tight">Simple Muni Tracker</h1>
+			<p class="text-sm md:text-base text-gray-600">Track your favorite MUNI stops</p>
 		</header>
 
 		<!-- Search Bar -->
