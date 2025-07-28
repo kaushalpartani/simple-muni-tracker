@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { X, Search, Clock, Users, Settings, Edit, Eye, EyeOff } from 'lucide-svelte';
+	import { X, Search, Clock, Users, Settings, Edit, Eye, EyeOff, HelpCircle } from 'lucide-svelte';
 
 	// Types
 	interface Stop {
@@ -27,28 +27,28 @@
 	}
 
 	// State
-	let searchInput = '';
-	let stops: Stop[] = [];
-	let loading = false;
-	let error = '';
-	let selectedStop: Stop | null = null;
-	let showModal = false;
-	let showSettingsModal = false;
+	let searchInput = $state('');
+	let stops = $state<Stop[]>([]);
+	let loading = $state(false);
+	let error = $state('');
+	let selectedStop = $state<Stop | null>(null);
+	let showModal = $state(false);
+	let showSettingsModal = $state(false);
 	let autoRefreshInterval: ReturnType<typeof setInterval> | null = null;
-	let lastRefreshTime = new Date();
-	let refreshIntervalSeconds = 10;
-	let reorderMode = false;
+	let lastRefreshTime = $state(new Date());
+	let refreshIntervalSeconds = $state(10);
+	let reorderMode = $state(false);
 
 	// Nickname editing state
-	let editingNickname: string | null = null;
-	let nicknameInput = '';
+	let editingNickname = $state<string | null>(null);
+	let nicknameInput = $state('');
 
 	// Drag and drop state
-	let draggedIndex: number | null = null;
-	let draggedOverIndex: number | null = null;
-	let isDragging = false;
-	let touchStartY = 0;
-	let touchStartIndex = -1;
+	let draggedIndex = $state<number | null>(null);
+	let draggedOverIndex = $state<number | null>(null);
+	let isDragging = $state(false);
+	let touchStartY = $state(0);
+	let touchStartIndex = $state(-1);
 
 	// API configuration - using our server-side proxy
 	const API_BASE = '/api/muni';
@@ -67,11 +67,13 @@
 	}
 
 	// Reactive statements to handle modal state changes
-	$: if (showModal || showSettingsModal) {
-		disableScroll();
-	} else {
-		enableScroll();
-	}
+	$effect(() => {
+		if (showModal || showSettingsModal) {
+			disableScroll();
+		} else {
+			enableScroll();
+		}
+	});
 
 	// Load saved stops and settings from localStorage
 	onMount(() => {
@@ -245,7 +247,15 @@
 		}
 		saveStops();
 		loading = false;
-		lastRefreshTime = new Date(); // Add this line
+		lastRefreshTime = new Date();
+		
+		// Update selectedStop if modal is open to reflect refreshed data
+		if (selectedStop) {
+			const refreshedStop = stops.find(s => s.code === selectedStop!.code);
+			if (refreshedStop) {
+				selectedStop = refreshedStop;
+			}
+		}
 	}
 
 	// Format minutes
@@ -514,7 +524,7 @@
 
 <div class="min-h-screen bg-gray-50">
 	<div class="max-w-4xl mx-auto px-4 py-8">
-		<!-- Header with Settings Gear -->
+		<!-- Header with Settings Gear and Help Icon -->
 		<header class="text-center mb-8 md:mb-12 relative px-4">
 			<!-- Settings Gear -->
 			<button
@@ -524,6 +534,17 @@
 			>
 				<Settings class="w-5 h-5 md:w-6 md:h-6" />
 			</button>
+			
+			<!-- Help Icon -->
+			<a
+				href="https://www.sfmta.com/find-a-stop"
+				target="_blank"
+				rel="noopener noreferrer"
+				class="absolute right-0 top-0 p-2 text-gray-400 hover:text-gray-600 transition-colors"
+				title="Find stop codes"
+			>
+				<HelpCircle class="w-5 h-5 md:w-6 md:h-6" />
+			</a>
 			
 			<h1 class="text-2xl md:text-3xl lg:text-4xl font-light text-gray-900 mb-2 leading-tight">Simple Muni Tracker</h1>
 			<p class="text-sm md:text-base text-gray-600">Track your favorite MUNI stops</p>
