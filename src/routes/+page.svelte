@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { X, Search, Clock, Users, Settings, Edit, Eye, EyeOff, HelpCircle } from 'lucide-svelte';
+	import { X, Search, Clock, Users, Settings, Edit, Eye, EyeOff, HelpCircle, Download, Upload } from 'lucide-svelte';
 
 	// Types
 	interface Stop {
@@ -49,6 +49,12 @@
 	let isDragging = $state(false);
 	let touchStartY = $state(0);
 	let touchStartIndex = $state(-1);
+
+	// Import/Export state
+	let importData = $state('');
+	let importError = $state('');
+	let exportData = $state('');
+	let showExportData = $state(false);
 
 	// API configuration - using our server-side proxy
 	const API_BASE = '/api/muni';
@@ -516,6 +522,83 @@
 		isDragging = false;
 		touchStartIndex = -1;
 	}
+
+	// Import/Export functions
+	function exportState() {
+		const jsonString = JSON.stringify(stops);
+		// Convert to base64 for easy copying
+		const base64 = btoa(jsonString);
+		exportData = base64;
+		showExportData = true;
+	}
+
+	function copyToClipboard() {
+		if (exportData) {
+			navigator.clipboard.writeText(exportData).then(() => {
+				// Could add a toast notification here
+				console.log('Copied to clipboard');
+			}).catch(err => {
+				console.error('Failed to copy to clipboard:', err);
+			});
+		}
+	}
+
+	function importState() {
+		if (!importData.trim()) {
+			importError = 'Please enter data to import';
+			return;
+		}
+
+		try {
+			// Decode from base64 first
+			const decoded = atob(importData.trim());
+			
+			// Parse the JSON
+			const importedStops = JSON.parse(decoded);
+			
+			// Validate the structure
+			if (!Array.isArray(importedStops)) {
+				throw new Error('Invalid data format: expected array of stops');
+			}
+
+			// Merge the imported stops with existing stops (avoiding duplicates)
+			const existingStopCodes = new Set(stops.map(stop => stop.code));
+			const newStops = importedStops.filter((stop: Stop) => !existingStopCodes.has(stop.code));
+			
+			if (newStops.length === 0) {
+				importError = 'No new stops to import (all stops already exist)';
+				return;
+			}
+
+			// Add the new stops
+			stops = [...stops, ...newStops];
+			saveStops();
+
+			// Start auto-refresh if we have stops and it's not already running
+			if (stops.length > 0 && !autoRefreshInterval) {
+				startAutoRefresh();
+			}
+
+			// Clear the form
+			importData = '';
+			importError = '';
+			
+			// Close the modal
+			closeSettingsModal();
+		} catch (err) {
+			importError = `Import failed: ${err instanceof Error ? err.message : 'Invalid base64 data'}`;
+		}
+	}
+
+	function clearImportForm() {
+		importData = '';
+		importError = '';
+	}
+
+	function closeExportData() {
+		showExportData = false;
+		exportData = '';
+	}
 </script>
 
 <svelte:head>
@@ -699,7 +782,8 @@
 				</button>
 			</div>
 
-			<div class="space-y-4">
+			<div class="space-y-6">
+				<!-- Auto-refresh interval -->
 				<div>
 					<label for="refresh-interval" class="block text-sm font-medium text-gray-700 mb-2">
 						Auto-refresh interval (seconds)
@@ -715,6 +799,62 @@
 					<p class="text-xs text-gray-500 mt-1">Range: 5-60 seconds</p>
 				</div>
 
+				<!-- Import/Export section -->
+				<div class="border-t pt-6">
+					<h3 class="text-lg font-medium text-gray-900 mb-4">Import/Export Data</h3>
+					
+					<!-- Export section -->
+					<div class="mb-6">
+						<div class="flex items-center gap-2 mb-3">
+							<Download class="w-5 h-5 text-gray-600" />
+							<h4 class="font-medium text-gray-800">Export Data</h4>
+						</div>
+						<p class="text-sm text-gray-600 mb-3">
+							Export your stops to share across devices
+						</p>
+						<button
+							on:click={exportState}
+							class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-red-700"
+						>
+							Export Data
+						</button>
+					</div>
+
+					<!-- Import section -->
+					<div>
+						<div class="flex items-center gap-2 mb-3">
+							<Upload class="w-5 h-5 text-gray-600" />
+							<h4 class="font-medium text-gray-800">Import Data</h4>
+						</div>
+						<p class="text-sm text-gray-600 mb-3">
+							Import stops from another device (will append to existing stops). Just paste a valid exported value!
+						</p>
+						<textarea
+							bind:value={importData}
+							placeholder="Paste base64 encoded data here..."
+							rows="4"
+							class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
+						></textarea>
+						{#if importError}
+							<p class="text-red-600 text-sm mt-2">{importError}</p>
+						{/if}
+						<div class="flex gap-2 mt-3">
+							<button
+								on:click={importState}
+								class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-red-700"
+							>
+								Import Data
+							</button>
+							<button
+								on:click={clearImportForm}
+								class="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400"
+							>
+								Clear
+							</button>
+						</div>
+					</div>
+				</div>
+
 				<div class="flex justify-end space-x-3 pt-4">
 					<button
 						on:click={closeSettingsModal}
@@ -727,6 +867,61 @@
 						class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-red-700"
 					>
 						Save
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Export Data Modal -->
+{#if showExportData}
+	<div 
+		class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" 
+		on:click={closeExportData}
+		on:keydown={(e) => e.key === 'Escape' && closeExportData()}
+		role="dialog"
+		aria-modal="true"
+		tabindex="-1"
+	>
+		<div 
+			class="bg-white rounded-lg max-w-2xl w-full p-6" 
+			on:click|stopPropagation
+			role="document"
+		>
+			<div class="flex justify-between items-center mb-6">
+				<h2 class="text-xl font-medium text-gray-900">Export Data</h2>
+				<button on:click={closeExportData} class="text-gray-400 hover:text-gray-600">
+					<X class="w-6 h-6" />
+				</button>
+			</div>
+
+			<div class="space-y-4">
+				<p class="text-sm text-gray-600">
+					Copy this base64 encoded data to share your stops across devices:
+				</p>
+				
+				<div class="relative">
+					<textarea
+						readonly
+						value={exportData}
+						rows="8"
+						class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 font-mono text-sm resize-none"
+					></textarea>
+					<button
+						on:click={copyToClipboard}
+						class="absolute top-2 right-2 px-3 py-1 bg-primary text-white text-xs rounded hover:bg-red-700"
+					>
+						Copy
+					</button>
+				</div>
+
+				<div class="flex justify-end">
+					<button
+						on:click={closeExportData}
+						class="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400"
+					>
+						Close
 					</button>
 				</div>
 			</div>
@@ -791,16 +986,16 @@
 								<p class="text-gray-600">Stop {selectedStop.code}</p>
 								<div class="flex items-center gap-3 mt-3">
 									<button
-										on:click={() => startEditingNickname(selectedStop.code)}
+										on:click={() => selectedStop && startEditingNickname(selectedStop.code)}
 										class="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-800"
 										title="Edit nickname"
 									>
 										<Edit class="w-4 h-4" />
-										{selectedStop.nickname ? 'Edit' : 'Add'} Nickname
+										{selectedStop?.nickname ? 'Edit' : 'Add'} Nickname
 									</button>
-									{#if selectedStop.nickname}
+									{#if selectedStop?.nickname}
 										<button
-											on:click={() => removeNickname(selectedStop.code)}
+											on:click={() => selectedStop && removeNickname(selectedStop.code)}
 											class="text-sm text-red-600 hover:text-red-800"
 											title="Remove nickname"
 										>
