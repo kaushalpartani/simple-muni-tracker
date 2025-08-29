@@ -361,7 +361,7 @@
 </script>
 
 <svelte:head>
-	<title>Simple Muni Tracker (Refactored)</title>
+	<title>Simple Muni Tracker</title>
 </svelte:head>
 
 <div class="min-h-screen bg-gray-50">
@@ -388,8 +388,8 @@
 				<HelpCircle class="w-5 h-5 md:w-6 md:h-6" />
 			</a>
 			
-			<h1 class="text-2xl md:text-3xl lg:text-4xl font-light text-gray-900 mb-2 leading-tight">Simple Muni Tracker (Refactored)</h1>
-			<p class="text-sm md:text-base text-gray-600">Track your favorite MUNI stops - Component-based version</p>
+			<h1 class="text-2xl md:text-3xl lg:text-4xl font-light text-gray-900 mb-2 leading-tight">Simple Muni Tracker</h1>
+			<p class="text-sm md:text-base text-gray-600">Track your favorite MUNI stops</p>
 		</header>
 
 		<!-- Search Bar -->
