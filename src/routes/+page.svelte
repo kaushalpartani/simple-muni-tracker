@@ -1,80 +1,42 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { X, Search, Clock, Users, Settings, Edit, Eye, EyeOff, HelpCircle, Download, Upload } from 'lucide-svelte';
-
-	// Types
-	interface Stop {
-		code: string;
-		name: string;
-		nickname?: string; // Optional nickname field
-		routes: Route[];
-		ignoredRoutes?: string[]; // Array of route IDs to ignore
-	}
-
-	interface Route {
-		id: string;
-		title: string;
-		description: string;
-		predictions: Prediction[];
-	}
-
-	interface Prediction {
-		minutes: number;
-		direction: string;
-		destination: string;
-		occupancy: string;
-		vehicleId: string;
-	}
-
-	// State
-	let searchInput = $state('');
-	let stops = $state<Stop[]>([]);
-	let loading = $state(false);
-	let error = $state('');
-	let selectedStop = $state<Stop | null>(null);
-	let showModal = $state(false);
-	let showSettingsModal = $state(false);
-	let autoRefreshInterval: ReturnType<typeof setInterval> | null = null;
-	let lastRefreshTime = $state(new Date());
-	let refreshIntervalSeconds = $state(10);
-	let reorderMode = $state(false);
-
-	// Nickname editing state
-	let editingNickname = $state<string | null>(null);
-	let nicknameInput = $state('');
-
-	// Drag and drop state
-	let draggedIndex = $state<number | null>(null);
-	let draggedOverIndex = $state<number | null>(null);
-	let isDragging = $state(false);
-	let touchStartY = $state(0);
-	let touchStartIndex = $state(-1);
-
-	// Import/Export state
-	let importData = $state('');
-	let importError = $state('');
-	let exportData = $state('');
-	let showExportData = $state(false);
-
-	// API configuration - using our server-side proxy
-	const API_BASE = '/api/muni';
-
-	// Scroll management
-	function disableScroll() {
-		if (typeof document !== 'undefined') {
-			document.body.style.overflow = 'hidden';
-		}
-	}
-
-	function enableScroll() {
-		if (typeof document !== 'undefined') {
-			document.body.style.overflow = '';
-		}
-	}
+	import { Settings, HelpCircle } from 'lucide-svelte';
+	
+	// Import components
+	import SearchBar from '$lib/components/SearchBar.svelte';
+	import StopCard from '$lib/components/StopCard.svelte';
+	import StopModal from '$lib/components/StopModal.svelte';
+	import SettingsModal from '$lib/components/SettingsModal.svelte';
+	import ExportModal from '$lib/components/ExportModal.svelte';
+	
+	// Import stores
+	import { 
+		stops, 
+		loading, 
+		lastRefreshTime, 
+		refreshIntervalSeconds, 
+		reorderMode,
+		draggedIndex,
+		draggedOverIndex,
+		showSettingsModal,
+		showModal,
+		selectedStop,
+		importData,
+		importError,
+		exportData,
+		showExportData,
+		autoRefreshInterval
+	} from '$lib/stores/muniStore';
+	
+	// Import utilities
+	import { loadStops, loadRefreshInterval, saveStops } from '$lib/utils/localStorage';
+	import { refreshAllStops } from '$lib/utils/muniApi';
+	import { formatLastRefresh } from '$lib/utils/formatters';
+	import { disableScroll, enableScroll } from '$lib/utils/scrollManager';
 
 	// Reactive statements to handle modal state changes
 	$effect(() => {
-		if (showModal || showSettingsModal) {
+		if ($showModal || $showSettingsModal) {
 			disableScroll();
 		} else {
 			enableScroll();
@@ -83,27 +45,25 @@
 
 	// Load saved stops and settings from localStorage
 	onMount(() => {
-		const saved = localStorage.getItem('muni-stops');
-		if (saved) {
-			stops = JSON.parse(saved);
+		const savedStops = loadStops();
+		if (savedStops.length > 0) {
+			stops.set(savedStops);
 		}
 		
 		// Load saved refresh interval
-		const savedInterval = localStorage.getItem('muni-refresh-interval');
-		if (savedInterval) {
-			refreshIntervalSeconds = parseInt(savedInterval);
-		}
+		const savedInterval = loadRefreshInterval();
+		refreshIntervalSeconds.set(savedInterval);
 		
 		// Start auto-refresh if there are stops
-		if (stops.length > 0) {
+		if (savedStops.length > 0) {
 			startAutoRefresh();
 		}
 	});
 
 	// Cleanup on component destroy
 	onDestroy(() => {
-		if (autoRefreshInterval) {
-			clearInterval(autoRefreshInterval);
+		if ($autoRefreshInterval) {
+			clearInterval($autoRefreshInterval);
 		}
 		// Re-enable scroll when component is destroyed
 		enableScroll();
@@ -111,262 +71,179 @@
 
 	// Start auto-refresh
 	function startAutoRefresh() {
-		if (autoRefreshInterval) {
-			clearInterval(autoRefreshInterval);
+		if ($autoRefreshInterval) {
+			clearInterval($autoRefreshInterval);
 		}
 		
-		autoRefreshInterval = setInterval(async () => {
-			if (stops.length > 0 && !loading) {
+		const interval = setInterval(async () => {
+			if ($stops.length > 0 && !$loading) {
 				await refreshAll();
 			}
-		}, refreshIntervalSeconds * 1000);
+		}, $refreshIntervalSeconds * 1000);
+		
+		autoRefreshInterval.set(interval);
 	}
 
 	// Stop auto-refresh
 	function stopAutoRefresh() {
-		if (autoRefreshInterval) {
-			clearInterval(autoRefreshInterval);
-			autoRefreshInterval = null;
-		}
-	}
-
-	// Save stops to localStorage
-	function saveStops() {
-		localStorage.setItem('muni-stops', JSON.stringify(stops));
-	}
-
-	// Save refresh interval to localStorage
-	function saveRefreshInterval() {
-		localStorage.setItem('muni-refresh-interval', refreshIntervalSeconds.toString());
-	}
-
-	// Add a new stop
-	async function addStop() {
-		if (!searchInput.trim()) return;
-
-		const stopCode = searchInput.trim();
-		if (stops.find(stop => stop.code === stopCode)) {
-			error = 'Stop already saved';
-			return;
-		}
-
-		loading = true;
-		error = '';
-
-		try {
-			const response = await fetch(`${API_BASE}/${stopCode}`);
-			
-			if (!response.ok) {
-				throw new Error(`HTTP error! status: ${response.status}`);
-			}
-
-			const data = await response.json();
-			
-			if (data.error) {
-				throw new Error(data.error);
-			}
-			
-			if (data.length === 0) {
-				throw new Error('No data found for this stop code');
-			}
-
-			const newStop: Stop = {
-				code: stopCode,
-				name: data[0].stop.name,
-				routes: data.map((route: any) => ({
-					id: route.route.id,
-					title: route.route.title,
-					description: route.route.description,
-					predictions: route.values.map((pred: any) => ({
-						minutes: pred.minutes,
-						direction: pred.direction.name,
-						destination: pred.direction.destinationName,
-						occupancy: pred.occupancyDescription,
-						vehicleId: pred.vehicleId
-					}))
-				}))
-			};
-
-			stops = [...stops, newStop];
-			saveStops();
-			searchInput = '';
-			
-			// Start auto-refresh if this is the first stop
-			if (stops.length === 1) {
-				startAutoRefresh();
-			}
-		} catch (err) {
-			error = `Error: ${err instanceof Error ? err.message : 'Unknown error'}`;
-		} finally {
-			loading = false;
-		}
-	}
-
-	// Remove a stop
-	function removeStop(code: string) {
-		stops = stops.filter(stop => stop.code !== code);
-		saveStops();
-		
-		// Stop auto-refresh if no stops remain
-		if (stops.length === 0) {
-			stopAutoRefresh();
+		if ($autoRefreshInterval) {
+			clearInterval($autoRefreshInterval);
+			autoRefreshInterval.set(null);
 		}
 	}
 
 	// Refresh all stops
 	async function refreshAll() {
-		loading = true;
-		for (const stop of stops) {
-			try {
-				const response = await fetch(`${API_BASE}/${stop.code}`);
-				if (response.ok) {
-					const data = await response.json();
-					if (data.error) {
-						console.error(`Error refreshing stop ${stop.code}:`, data.error);
-						continue;
-					}
-					if (data.length > 0) {
-						const updatedStop: Stop = {
-							code: stop.code,
-							name: data[0].stop.name,
-							nickname: stop.nickname, // Preserve nickname during refresh
-							ignoredRoutes: stop.ignoredRoutes, // Preserve ignored routes during refresh
-							routes: data.map((route: any) => ({
-								id: route.route.id,
-								title: route.route.title,
-								description: route.route.description,
-								predictions: route.values.map((pred: any) => ({
-									minutes: pred.minutes,
-									direction: pred.direction.name,
-									destination: pred.direction.destinationName,
-									occupancy: pred.occupancyDescription,
-									vehicleId: pred.vehicleId
-								}))
-							}))
-						};
-						stops = stops.map(s => s.code === stop.code ? updatedStop : s);
-					}
-				}
-			} catch (err) {
-				console.error(`Error refreshing stop ${stop.code}:`, err);
-			}
-		}
-		saveStops();
-		loading = false;
-		lastRefreshTime = new Date();
+		loading.set(true);
+		const updatedStops = await refreshAllStops($stops);
+		stops.set(updatedStops);
+		saveStops(updatedStops);
+		loading.set(false);
+		lastRefreshTime.set(new Date());
 		
 		// Update selectedStop if modal is open to reflect refreshed data
-		if (selectedStop) {
-			const refreshedStop = stops.find(s => s.code === selectedStop!.code);
+		if ($selectedStop) {
+			const refreshedStop = updatedStops.find(s => s.code === $selectedStop!.code);
 			if (refreshedStop) {
-				selectedStop = refreshedStop;
+				selectedStop.set(refreshedStop);
 			}
 		}
-	}
-
-	// Format minutes
-	function formatMinutes(minutes: number): string {
-		if (minutes === 0) return 'Now';
-		if (minutes === 1) return '1 min';
-		return `${minutes} min`;
-	}
-
-	// Get next prediction for a route
-	function getNextPrediction(predictions: Prediction[]): Prediction | null {
-		return predictions.length > 0 ? predictions[0] : null;
 	}
 
 	// Open modal
-	function openModal(stop: Stop) {
-		selectedStop = stop;
-		showModal = true;
+	function openModal(stop: any) {
+		selectedStop.set(stop);
+		showModal.set(true);
 	}
 
 	// Close modal
 	function closeModal() {
-		showModal = false;
-		selectedStop = null;
+		showModal.set(false);
+		selectedStop.set(null);
 	}
 
 	// Open settings modal
 	function openSettingsModal() {
-		showSettingsModal = true;
+		showSettingsModal.set(true);
 	}
 
-	// Close settings modal
-	function closeSettingsModal() {
-		showSettingsModal = false;
-	}
-
-	// Update refresh interval
-	function updateRefreshInterval() {
-		saveRefreshInterval();
-		if (stops.length > 0) {
-			startAutoRefresh();
+	// Remove a stop
+	function removeStop(code: string) {
+		const updatedStops = $stops.filter(stop => stop.code !== code);
+		stops.set(updatedStops);
+		saveStops(updatedStops);
+		
+		// Stop auto-refresh if no stops remain
+		if (updatedStops.length === 0) {
+			stopAutoRefresh();
 		}
-		closeSettingsModal();
-	}
-
-	// Format last refresh time
-	function formatLastRefresh(): string {
-		return lastRefreshTime.toLocaleTimeString();
 	}
 
 	// Toggle reorder mode
 	function toggleReorderMode() {
-		reorderMode = !reorderMode;
+		reorderMode.set(!$reorderMode);
 	}
 
-	// Nickname editing functions
-	function startEditingNickname(stopCode: string) {
-		const stop = stops.find(s => s.code === stopCode);
-		if (stop) {
-			editingNickname = stopCode;
-			nicknameInput = stop.nickname || '';
-		}
-	}
-
-	function saveNickname() {
-		if (editingNickname) {
-			stops = stops.map(stop => 
-				stop.code === editingNickname 
-					? { ...stop, nickname: nicknameInput.trim() || undefined }
-					: stop
-			);
-			saveStops();
-			
-			// Update selectedStop to reflect the changes immediately
-			if (selectedStop && selectedStop.code === editingNickname) {
-				selectedStop = stops.find(s => s.code === editingNickname) || selectedStop;
-			}
-			
-			editingNickname = null;
-			nicknameInput = '';
-		}
-	}
-
-	function cancelNicknameEdit() {
-		editingNickname = null;
-		nicknameInput = '';
-	}
-
-	function removeNickname(stopCode: string) {
-		stops = stops.map(stop => 
-			stop.code === stopCode 
-				? { ...stop, nickname: undefined }
-				: stop
-		);
-		saveStops();
+	// Drag and drop functions
+	function handleDragStart(e: DragEvent, index: number) {
+		if (!$reorderMode) return;
 		
-		// Update selectedStop to reflect the changes immediately
-		if (selectedStop && selectedStop.code === stopCode) {
-			selectedStop = stops.find(s => s.code === stopCode) || selectedStop;
+		if (e.dataTransfer) {
+			e.dataTransfer.effectAllowed = 'move';
+			e.dataTransfer.setData('text/plain', index.toString());
 		}
+		draggedIndex.set(index);
+	}
+
+	function handleDragOver(e: DragEvent, index: number) {
+		if (!$reorderMode) return;
+		
+		e.preventDefault();
+		if (e.dataTransfer) {
+			e.dataTransfer.dropEffect = 'move';
+		}
+		draggedOverIndex.set(index);
+	}
+
+	function handleDragLeave() {
+		draggedOverIndex.set(null);
+	}
+
+	function handleDrop(e: DragEvent, index: number) {
+		if (!$reorderMode || $draggedIndex === null) return;
+		
+		e.preventDefault();
+		if ($draggedIndex !== index) {
+			const newStops = [...$stops];
+			const [draggedItem] = newStops.splice($draggedIndex, 1);
+			newStops.splice(index, 0, draggedItem);
+			stops.set(newStops);
+			saveStops(newStops);
+		}
+		
+		draggedIndex.set(null);
+		draggedOverIndex.set(null);
+	}
+
+	function handleDragEnd() {
+		draggedIndex.set(null);
+		draggedOverIndex.set(null);
+	}
+
+	// Touch event handlers for mobile
+	function handleTouchStart(e: TouchEvent, index: number) {
+		if (!$reorderMode) return;
+		
+		const touchY = e.touches[0].clientY;
+		draggedIndex.set(index);
+	}
+
+	function handleTouchMove(e: TouchEvent, index: number) {
+		if (!$reorderMode) return;
+		
+		e.preventDefault();
+		const touchY = e.touches[0].clientY;
+		const touchX = e.touches[0].clientX;
+		
+		// Get all card elements and find the one under the touch
+		const cards = document.querySelectorAll('[data-stop-index]');
+		let targetIndex = $draggedIndex;
+		
+		for (let i = 0; i < cards.length; i++) {
+			const card = cards[i] as HTMLElement;
+			const rect = card.getBoundingClientRect();
+			
+			// Check if touch is within the card bounds (both X and Y)
+			if (touchX >= rect.left && touchX <= rect.right && 
+				touchY >= rect.top && touchY <= rect.bottom) {
+				targetIndex = parseInt(card.getAttribute('data-stop-index') || '0');
+				break;
+			}
+		}
+		
+		if (targetIndex !== $draggedOverIndex) {
+			draggedOverIndex.set(targetIndex);
+		}
+	}
+
+	function handleTouchEnd(e: TouchEvent, index: number) {
+		if (!$reorderMode) return;
+		
+		if ($draggedIndex !== null && $draggedOverIndex !== null && $draggedIndex !== $draggedOverIndex) {
+			const newStops = [...$stops];
+			const [draggedItem] = newStops.splice($draggedIndex, 1);
+			newStops.splice($draggedOverIndex, 0, draggedItem);
+			stops.set(newStops);
+			saveStops(newStops);
+		}
+		
+		draggedIndex.set(null);
+		draggedOverIndex.set(null);
 	}
 
 	// Route ignoring functions
 	function toggleRouteIgnore(stopCode: string, routeId: string) {
-		stops = stops.map(stop => {
+		const updatedStops = $stops.map(stop => {
 			if (stop.code === stopCode) {
 				const ignoredRoutes = stop.ignoredRoutes || [];
 				const isIgnored = ignoredRoutes.includes(routeId);
@@ -388,170 +265,36 @@
 			}
 			return stop;
 		});
-		saveStops();
+		stops.set(updatedStops);
+		saveStops(updatedStops);
 		
 		// Update selectedStop to reflect the changes immediately
-		if (selectedStop && selectedStop.code === stopCode) {
-			selectedStop = stops.find(s => s.code === stopCode) || selectedStop;
-		}
-	}
-
-	function isRouteIgnored(stopCode: string, routeId: string): boolean {
-		const stop = stops.find(s => s.code === stopCode);
-		return stop?.ignoredRoutes?.includes(routeId) || false;
-	}
-
-	function getVisibleRoutes(stop: Stop): Route[] {
-		const visibleRoutes = stop.routes.filter(route => !isRouteIgnored(stop.code, route.id));
-		
-		// Sort routes by soonest arrival time
-		return visibleRoutes.sort((a, b) => {
-			// Get the earliest prediction for each route
-			const aEarliest = a.predictions.length > 0 ? Math.min(...a.predictions.map(p => p.minutes)) : Infinity;
-			const bEarliest = b.predictions.length > 0 ? Math.min(...b.predictions.map(p => p.minutes)) : Infinity;
-			
-			// "Now" (0 minutes) should be considered earliest
-			return aEarliest - bEarliest;
-		});
-	}
-
-	// Drag and drop functions
-	function handleDragStart(e: DragEvent, index: number) {
-		if (!reorderMode) return;
-		
-		if (e.dataTransfer) {
-			e.dataTransfer.effectAllowed = 'move';
-			e.dataTransfer.setData('text/plain', index.toString());
-		}
-		draggedIndex = index;
-		isDragging = true;
-	}
-
-	function handleDragOver(e: DragEvent, index: number) {
-		if (!reorderMode) return;
-		
-		e.preventDefault();
-		if (e.dataTransfer) {
-			e.dataTransfer.dropEffect = 'move';
-		}
-		draggedOverIndex = index;
-	}
-
-	function handleDragLeave() {
-		draggedOverIndex = null;
-	}
-
-	function handleDrop(e: DragEvent, index: number) {
-		if (!reorderMode || draggedIndex === null) return;
-		
-		e.preventDefault();
-		if (draggedIndex !== index) {
-			const newStops = [...stops];
-			const [draggedItem] = newStops.splice(draggedIndex, 1);
-			newStops.splice(index, 0, draggedItem);
-			stops = newStops;
-			saveStops();
-		}
-		
-		draggedIndex = null;
-		draggedOverIndex = null;
-		isDragging = false;
-	}
-
-	function handleDragEnd() {
-		draggedIndex = null;
-		draggedOverIndex = null;
-		isDragging = false;
-	}
-
-	// Touch event handlers for mobile
-	function handleTouchStart(e: TouchEvent, index: number) {
-		if (!reorderMode) return;
-		
-		touchStartY = e.touches[0].clientY;
-		touchStartIndex = index;
-		draggedIndex = index;
-		isDragging = true;
-	}
-
-	function handleTouchMove(e: TouchEvent, index: number) {
-		if (!reorderMode || touchStartIndex === -1) return;
-		
-		e.preventDefault();
-		const touchY = e.touches[0].clientY;
-		const touchX = e.touches[0].clientX;
-		const deltaY = touchY - touchStartY;
-		
-		// Only start dragging if moved more than 10px
-		if (Math.abs(deltaY) > 10) {
-			// Get all card elements and find the one under the touch
-			const cards = document.querySelectorAll('[data-stop-index]');
-			let targetIndex = draggedIndex; // Use draggedIndex instead of touchStartIndex
-			
-			for (let i = 0; i < cards.length; i++) {
-				const card = cards[i] as HTMLElement;
-				const rect = card.getBoundingClientRect();
-				
-				// Check if touch is within the card bounds (both X and Y)
-				if (touchX >= rect.left && touchX <= rect.right && 
-					touchY >= rect.top && touchY <= rect.bottom) {
-					targetIndex = parseInt(card.getAttribute('data-stop-index') || '0');
-					break;
-				}
-			}
-			
-			if (targetIndex !== draggedOverIndex) {
-				draggedOverIndex = targetIndex;
+		if ($selectedStop && $selectedStop.code === stopCode) {
+			const updatedStop = updatedStops.find(s => s.code === stopCode);
+			if (updatedStop) {
+				selectedStop.set(updatedStop);
 			}
 		}
-	}
-
-	function handleTouchEnd(e: TouchEvent, index: number) {
-		if (!reorderMode) return;
-		
-		if (draggedIndex !== null && draggedOverIndex !== null && draggedIndex !== draggedOverIndex) {
-			const newStops = [...stops];
-			const [draggedItem] = newStops.splice(draggedIndex, 1);
-			newStops.splice(draggedOverIndex, 0, draggedItem);
-			stops = newStops;
-			saveStops();
-		}
-		
-		draggedIndex = null;
-		draggedOverIndex = null;
-		isDragging = false;
-		touchStartIndex = -1;
 	}
 
 	// Import/Export functions
 	function exportState() {
-		const jsonString = JSON.stringify(stops);
+		const jsonString = JSON.stringify($stops);
 		// Convert to base64 for easy copying
 		const base64 = btoa(jsonString);
-		exportData = base64;
-		showExportData = true;
-	}
-
-	function copyToClipboard() {
-		if (exportData) {
-			navigator.clipboard.writeText(exportData).then(() => {
-				// Could add a toast notification here
-				console.log('Copied to clipboard');
-			}).catch(err => {
-				console.error('Failed to copy to clipboard:', err);
-			});
-		}
+		exportData.set(base64);
+		showExportData.set(true);
 	}
 
 	function importState() {
-		if (!importData.trim()) {
-			importError = 'Please enter data to import';
+		if (!$importData.trim()) {
+			importError.set('Please enter data to import');
 			return;
 		}
 
 		try {
 			// Decode from base64 first
-			const decoded = atob(importData.trim());
+			const decoded = atob($importData.trim());
 			
 			// Parse the JSON
 			const importedStops = JSON.parse(decoded);
@@ -562,42 +305,58 @@
 			}
 
 			// Merge the imported stops with existing stops (avoiding duplicates)
-			const existingStopCodes = new Set(stops.map(stop => stop.code));
-			const newStops = importedStops.filter((stop: Stop) => !existingStopCodes.has(stop.code));
+			const existingStopCodes = new Set($stops.map(stop => stop.code));
+			const newStops = importedStops.filter((stop: any) => !existingStopCodes.has(stop.code));
 			
 			if (newStops.length === 0) {
-				importError = 'No new stops to import (all stops already exist)';
+				importError.set('No new stops to import (all stops already exist)');
 				return;
 			}
 
 			// Add the new stops
-			stops = [...stops, ...newStops];
-			saveStops();
+			const updatedStops = [...$stops, ...newStops];
+			stops.set(updatedStops);
+			saveStops(updatedStops);
 
 			// Start auto-refresh if we have stops and it's not already running
-			if (stops.length > 0 && !autoRefreshInterval) {
+			if (updatedStops.length > 0 && !$autoRefreshInterval) {
 				startAutoRefresh();
 			}
 
 			// Clear the form
-			importData = '';
-			importError = '';
+			importData.set('');
+			importError.set('');
 			
 			// Close the modal
-			closeSettingsModal();
+			showSettingsModal.set(false);
 		} catch (err) {
-			importError = `Import failed: ${err instanceof Error ? err.message : 'Invalid base64 data'}`;
+			importError.set(`Import failed: ${err instanceof Error ? err.message : 'Invalid base64 data'}`);
 		}
 	}
 
 	function clearImportForm() {
-		importData = '';
-		importError = '';
+		importData.set('');
+		importError.set('');
 	}
 
 	function closeExportData() {
-		showExportData = false;
-		exportData = '';
+		showExportData.set(false);
+		exportData.set('');
+	}
+
+	// Callback when stop is added
+	function onStopAdded() {
+		// Start auto-refresh if this is the first stop
+		if ($stops.length === 1) {
+			startAutoRefresh();
+		}
+	}
+
+	// Update refresh interval
+	function updateRefreshInterval() {
+		if ($stops.length > 0) {
+			startAutoRefresh();
+		}
 	}
 </script>
 
@@ -634,121 +393,62 @@
 		</header>
 
 		<!-- Search Bar -->
-		<div class="max-w-md mx-auto mb-8">
-			<div class="flex gap-2">
-				<div class="relative flex-1">
-					<Search class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-					<input
-						type="text"
-						bind:value={searchInput}
-						placeholder="Enter stop code (e.g., 15247)"
-						class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-						on:keydown={(e) => e.key === 'Enter' && addStop()}
-					/>
-				</div>
-				<button
-					on:click={addStop}
-					disabled={loading || !searchInput.trim()}
-					class="px-6 py-3 bg-primary text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-				>
-					{loading ? 'Adding...' : 'Add Stop'}
-				</button>
-			</div>
-			{#if error}
-				<p class="text-red-600 text-sm mt-2">{error}</p>
-			{/if}
-		</div>
+		<SearchBar {onStopAdded} />
 
 		<!-- Controls -->
-		{#if stops.length > 0}
+		{#if $stops.length > 0}
 			<div class="text-center mb-6 space-y-2">
 				<button
 					on:click={refreshAll}
-					disabled={loading}
+					disabled={$loading}
 					class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
 				>
-					{loading ? 'Refreshing...' : 'Refresh All'}
+					{$loading ? 'Refreshing...' : 'Refresh All'}
 				</button>
 				
 				<!-- Auto-refresh status -->
 				<div class="text-sm text-gray-600">
-					{#if autoRefreshInterval}
-						<span class="text-green-600">🔄 Auto-refresh active ({refreshIntervalSeconds}s)</span>
+					{#if $autoRefreshInterval}
+						<span class="text-green-600">🔄 Auto-refresh active ({$refreshIntervalSeconds}s)</span>
 					{:else}
 						<span class="text-gray-500">⏸️ Auto-refresh paused</span>
 					{/if}
-					{#if lastRefreshTime}
-						<span class="ml-2">• Last updated: {formatLastRefresh()}</span>
+					{#if $lastRefreshTime}
+						<span class="ml-2">• Last updated: {formatLastRefresh($lastRefreshTime)}</span>
 					{/if}
 				</div>
 
 				<!-- Reorder toggle button -->
 				<button
 					on:click={toggleReorderMode}
-					class="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors {reorderMode ? 'bg-primary text-white border-primary hover:bg-red-700' : 'bg-white text-gray-700'}"
+					class="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors {$reorderMode ? 'bg-primary text-white border-primary hover:bg-red-700' : 'bg-white text-gray-700'}"
 				>
-					{reorderMode ? 'Exit Reorder Mode' : 'Reorder Tiles'}
+					{$reorderMode ? 'Exit Reorder Mode' : 'Reorder Tiles'}
 				</button>
 			</div>
 		{/if}
 
 		<!-- Stops Grid -->
-		{#if stops.length > 0}
+		{#if $stops.length > 0}
 			<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-				{#each stops as stop, index (stop.code)}
-					<div 
-						class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-all duration-200 cursor-pointer relative {reorderMode ? 'cursor-grab active:cursor-grabbing' : ''} {draggedIndex === index ? 'opacity-50 scale-95 shadow-lg' : ''} {draggedOverIndex === index ? 'border-primary border-2' : ''}"
-						on:click={() => !reorderMode && openModal(stop)}
-						on:keydown={(e) => e.key === 'Enter' && !reorderMode && openModal(stop)}
-						role="button"
-						tabindex="0"
-						draggable={reorderMode}
-						on:dragstart={(e) => handleDragStart(e, index)}
-						on:dragover={(e) => handleDragOver(e, index)}
-						on:dragleave={handleDragLeave}
-						on:drop={(e) => handleDrop(e, index)}
-						on:dragend={handleDragEnd}
-						on:touchstart={(e) => handleTouchStart(e, index)}
-						on:touchmove={(e) => handleTouchMove(e, index)}
-						on:touchend={(e) => handleTouchEnd(e, index)}
-						data-stop-index={index}
-					>
-						<div class="flex justify-between items-start mb-4">
-							<div>
-								<h3 class="font-medium text-gray-900">
-									{stop.nickname || stop.name}
-									{#if stop.nickname}
-										<span class="text-sm text-gray-500 ml-1">({stop.name})</span>
-									{/if}
-								</h3>
-								<p class="text-sm text-gray-500">Stop {stop.code}</p>
-							</div>
-							<button
-								on:click|stopPropagation={() => removeStop(stop.code)}
-								class="text-gray-400 hover:text-red-500 p-1"
-							>
-								<X class="w-4 h-4" />
-							</button>
-						</div>
-						
-						<div class="space-y-3">
-							{#each getVisibleRoutes(stop) as route}
-								{@const nextPrediction = getNextPrediction(route.predictions)}
-								{#if nextPrediction}
-									<div class="flex items-center justify-between">
-										<div>
-											<p class="font-medium text-gray-900">{route.id}</p>
-											<p class="text-sm text-gray-600">{nextPrediction.direction}</p>
-										</div>
-										<div class="text-right">
-											<p class="font-medium text-primary">{formatMinutes(nextPrediction.minutes)}</p>
-											<p class="text-xs text-gray-500">{nextPrediction.occupancy}</p>
-										</div>
-									</div>
-								{/if}
-							{/each}
-						</div>
-					</div>
+				{#each $stops as stop, index (stop.code)}
+					<StopCard
+						{stop}
+						{index}
+						reorderMode={$reorderMode}
+						draggedIndex={$draggedIndex}
+						draggedOverIndex={$draggedOverIndex}
+						onRemove={removeStop}
+						onOpenModal={openModal}
+						onDragStart={handleDragStart}
+						onDragOver={handleDragOver}
+						onDragLeave={handleDragLeave}
+						onDrop={handleDrop}
+						onDragEnd={handleDragEnd}
+						onTouchStart={handleTouchStart}
+						onTouchMove={handleTouchMove}
+						onTouchEnd={handleTouchEnd}
+					/>
 				{/each}
 			</div>
 		{:else}
@@ -760,314 +460,17 @@
 	</div>
 </div>
 
-<!-- Settings Modal -->
-{#if showSettingsModal}
-	<div 
-		class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" 
-		on:click={closeSettingsModal}
-		on:keydown={(e) => e.key === 'Escape' && closeSettingsModal()}
-		role="dialog"
-		aria-modal="true"
-		tabindex="-1"
-	>
-		<div 
-			class="bg-white rounded-lg max-w-md w-full p-6" 
-			on:click|stopPropagation
-			role="document"
-		>
-			<div class="flex justify-between items-center mb-6">
-				<h2 class="text-xl font-medium text-gray-900">Settings</h2>
-				<button on:click={closeSettingsModal} class="text-gray-400 hover:text-gray-600">
-					<X class="w-6 h-6" />
-				</button>
-			</div>
+<!-- Modals -->
+<StopModal 
+	onClose={closeModal}
+	onToggleRouteIgnore={toggleRouteIgnore}
+/>
 
-			<div class="space-y-6">
-				<!-- Auto-refresh interval -->
-				<div>
-					<label for="refresh-interval" class="block text-sm font-medium text-gray-700 mb-2">
-						Auto-refresh interval (seconds)
-					</label>
-					<input
-						id="refresh-interval"
-						type="number"
-						min="5"
-						max="60"
-						bind:value={refreshIntervalSeconds}
-						class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-					/>
-					<p class="text-xs text-gray-500 mt-1">Range: 5-60 seconds</p>
-				</div>
+<SettingsModal
+	onUpdateRefreshInterval={updateRefreshInterval}
+	onExportState={exportState}
+	onImportState={importState}
+	onClearImportForm={clearImportForm}
+/>
 
-				<!-- Import/Export section -->
-				<div class="border-t pt-6">
-					<h3 class="text-lg font-medium text-gray-900 mb-4">Import/Export Data</h3>
-					
-					<!-- Export section -->
-					<div class="mb-6">
-						<div class="flex items-center gap-2 mb-3">
-							<Download class="w-5 h-5 text-gray-600" />
-							<h4 class="font-medium text-gray-800">Export Data</h4>
-						</div>
-						<p class="text-sm text-gray-600 mb-3">
-							Export your stops to share across devices
-						</p>
-						<button
-							on:click={exportState}
-							class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-red-700"
-						>
-							Export Data
-						</button>
-					</div>
-
-					<!-- Import section -->
-					<div>
-						<div class="flex items-center gap-2 mb-3">
-							<Upload class="w-5 h-5 text-gray-600" />
-							<h4 class="font-medium text-gray-800">Import Data</h4>
-						</div>
-						<p class="text-sm text-gray-600 mb-3">
-							Import stops from another device (will append to existing stops). Just paste a valid exported value!
-						</p>
-						<textarea
-							bind:value={importData}
-							placeholder="Paste base64 encoded data here..."
-							rows="4"
-							class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
-						></textarea>
-						{#if importError}
-							<p class="text-red-600 text-sm mt-2">{importError}</p>
-						{/if}
-						<div class="flex gap-2 mt-3">
-							<button
-								on:click={importState}
-								class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-red-700"
-							>
-								Import Data
-							</button>
-							<button
-								on:click={clearImportForm}
-								class="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400"
-							>
-								Clear
-							</button>
-						</div>
-					</div>
-				</div>
-
-				<div class="flex justify-end space-x-3 pt-4">
-					<button
-						on:click={closeSettingsModal}
-						class="px-4 py-2 text-gray-600 hover:text-gray-800"
-					>
-						Cancel
-					</button>
-					<button
-						on:click={updateRefreshInterval}
-						class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-red-700"
-					>
-						Save
-					</button>
-				</div>
-			</div>
-		</div>
-	</div>
-{/if}
-
-<!-- Export Data Modal -->
-{#if showExportData}
-	<div 
-		class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" 
-		on:click={closeExportData}
-		on:keydown={(e) => e.key === 'Escape' && closeExportData()}
-		role="dialog"
-		aria-modal="true"
-		tabindex="-1"
-	>
-		<div 
-			class="bg-white rounded-lg max-w-2xl w-full p-6" 
-			on:click|stopPropagation
-			role="document"
-		>
-			<div class="flex justify-between items-center mb-6">
-				<h2 class="text-xl font-medium text-gray-900">Export Data</h2>
-				<button on:click={closeExportData} class="text-gray-400 hover:text-gray-600">
-					<X class="w-6 h-6" />
-				</button>
-			</div>
-
-			<div class="space-y-4">
-				<p class="text-sm text-gray-600">
-					Copy this base64 encoded data to share your stops across devices:
-				</p>
-				
-				<div class="relative">
-					<textarea
-						readonly
-						value={exportData}
-						rows="8"
-						class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 font-mono text-sm resize-none"
-					></textarea>
-					<button
-						on:click={copyToClipboard}
-						class="absolute top-2 right-2 px-3 py-1 bg-primary text-white text-xs rounded hover:bg-red-700"
-					>
-						Copy
-					</button>
-				</div>
-
-				<div class="flex justify-end">
-					<button
-						on:click={closeExportData}
-						class="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400"
-					>
-						Close
-					</button>
-				</div>
-			</div>
-		</div>
-	</div>
-{/if}
-
-<!-- Stop Details Modal -->
-{#if showModal && selectedStop}
-	<div 
-		class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" 
-		on:click={closeModal}
-		on:keydown={(e) => e.key === 'Escape' && closeModal()}
-		role="dialog"
-		aria-modal="true"
-		tabindex="-1"
-	>
-		<div 
-			class="bg-white rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto" 
-			on:click|stopPropagation
-			role="document"
-		>
-			<div class="p-6">
-				<div class="flex justify-between items-start mb-6">
-					<div class="flex-1">
-						{#if editingNickname === selectedStop.code}
-							<div class="space-y-3">
-								<input
-									type="text"
-									bind:value={nicknameInput}
-									placeholder="Enter nickname"
-									class="w-full px-3 py-2 text-lg border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-									on:keydown={(e) => {
-										if (e.key === 'Enter') saveNickname();
-										if (e.key === 'Escape') cancelNicknameEdit();
-									}}
-									on:blur={saveNickname}
-								/>
-								<div class="flex gap-2">
-									<button
-										on:click={saveNickname}
-										class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-red-700"
-									>
-										Save
-									</button>
-									<button
-										on:click={cancelNicknameEdit}
-										class="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400"
-									>
-										Cancel
-									</button>
-								</div>
-							</div>
-						{:else}
-							<div>
-								<h2 class="text-2xl font-medium text-gray-900">
-									{selectedStop.nickname || selectedStop.name}
-									{#if selectedStop.nickname}
-										<span class="text-lg text-gray-500 ml-2">({selectedStop.name})</span>
-									{/if}
-								</h2>
-								<p class="text-gray-600">Stop {selectedStop.code}</p>
-								<div class="flex items-center gap-3 mt-3">
-									<button
-										on:click={() => selectedStop && startEditingNickname(selectedStop.code)}
-										class="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-800"
-										title="Edit nickname"
-									>
-										<Edit class="w-4 h-4" />
-										{selectedStop?.nickname ? 'Edit' : 'Add'} Nickname
-									</button>
-									{#if selectedStop?.nickname}
-										<button
-											on:click={() => selectedStop && removeNickname(selectedStop.code)}
-											class="text-sm text-red-600 hover:text-red-800"
-											title="Remove nickname"
-										>
-											Remove Nickname
-										</button>
-									{/if}
-								</div>
-							</div>
-						{/if}
-					</div>
-					<button on:click={closeModal} class="text-gray-400 hover:text-gray-600">
-						<X class="w-6 h-6" />
-					</button>
-				</div>
-
-				<div class="space-y-6">
-					{#each selectedStop!.routes as route}
-						{@const isIgnored = isRouteIgnored(selectedStop!.code, route.id)}
-						<div class="border border-gray-200 rounded-lg p-4 {isIgnored ? 'bg-gray-50 opacity-75' : ''}">
-							<div class="flex justify-between items-start mb-4">
-								<div class="flex-1">
-									<div class="flex items-center gap-2">
-										<h3 class="font-medium text-lg text-gray-900">{route.id}</h3>
-										{#if isIgnored}
-											<span class="text-xs bg-gray-300 text-gray-600 px-2 py-1 rounded">Ignored</span>
-										{/if}
-									</div>
-									<p class="text-sm text-gray-600">{route.title}</p>
-									<p class="text-xs text-gray-500 mt-1">{route.description}</p>
-								</div>
-								<button
-									on:click={() => toggleRouteIgnore(selectedStop!.code, route.id)}
-									class="p-2 text-gray-400 hover:text-gray-600 transition-colors"
-									title={isIgnored ? 'Show route' : 'Hide route'}
-								>
-									{#if isIgnored}
-										<EyeOff class="w-4 h-4" />
-									{:else}
-										<Eye class="w-4 h-4" />
-									{/if}
-								</button>
-							</div>
-
-							{#if route.predictions.length > 0}
-								<div class="space-y-3">
-									{#each route.predictions.slice(0, 5) as prediction}
-										<div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-											<div class="flex items-center space-x-3">
-												<Clock class="w-4 h-4 text-gray-400" />
-												<div>
-													<p class="font-medium text-gray-900">{formatMinutes(prediction.minutes)}</p>
-													<p class="text-sm text-gray-600">{prediction.direction}</p>
-													<p class="text-xs text-gray-500">{prediction.destination}</p>
-												</div>
-											</div>
-											<div class="text-right">
-												<div class="flex items-center space-x-1">
-													<Users class="w-4 h-4 text-gray-400" />
-													<span class="text-sm text-gray-600">{prediction.occupancy}</span>
-												</div>
-												<p class="text-xs text-gray-500">#{prediction.vehicleId}</p>
-											</div>
-										</div>
-									{/each}
-								</div>
-							{:else}
-								<p class="text-gray-500 text-center py-4">No predictions available</p>
-							{/if}
-						</div>
-					{/each}
-				</div>
-			</div>
-		</div>
-	</div>
-{/if}
+<ExportModal onClose={closeExportData} />
