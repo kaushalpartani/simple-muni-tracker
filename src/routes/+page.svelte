@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { Settings, HelpCircle, Map } from 'lucide-svelte';
+	import { Settings, Map } from 'lucide-svelte';
 	
 	// Import components
 	import SearchBar from '$lib/components/SearchBar.svelte';
@@ -422,7 +422,7 @@
 
 <div class="min-h-screen bg-gray-50">
 	<div class="max-w-4xl mx-auto px-4 py-8">
-		<!-- Header with Settings Gear and Help Icon -->
+		<!-- Header with Settings Gear and Map Icon -->
 		<header class="text-center mb-8 md:mb-12 relative px-4">
 			<!-- Settings Gear -->
 			<button
@@ -436,21 +436,10 @@
 			<!-- Map Link -->
 			<a
 				href="/stop-map"
-				class="absolute right-12 top-0 p-2 text-gray-400 hover:text-gray-600 transition-colors"
+				class="absolute right-0 top-0 p-2 text-gray-400 hover:text-gray-600 transition-colors"
 				title="Browse stops on map"
 			>
 				<Map class="w-5 h-5 md:w-6 md:h-6" />
-			</a>
-			
-			<!-- Help Icon -->
-			<a
-				href="https://www.sfmta.com/find-a-stop"
-				target="_blank"
-				rel="noopener noreferrer"
-				class="absolute right-0 top-0 p-2 text-gray-400 hover:text-gray-600 transition-colors"
-				title="Find stop codes"
-			>
-				<HelpCircle class="w-5 h-5 md:w-6 md:h-6" />
 			</a>
 			
 			<h1 class="text-2xl md:text-3xl lg:text-4xl font-light text-gray-900 mb-2 leading-tight">Simple Muni Tracker</h1>
