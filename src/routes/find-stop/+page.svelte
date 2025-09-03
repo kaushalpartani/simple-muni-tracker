@@ -1,8 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { browser } from '$app/environment';
 	import { MapPin, Navigation, AlertCircle, Loader } from 'lucide-svelte';
-	import L from 'leaflet';
-	import 'leaflet/dist/leaflet.css';
 	
 	// Import stores and utilities for adding stops
 	import { 
@@ -26,9 +25,10 @@
 	}
 
 	let mapContainer: HTMLDivElement;
-	let map: L.Map;
-	let userMarker: L.Marker | null = null;
-	let stopMarkers: L.Marker[] = [];
+	let map: any = null;
+	let userMarker: any = null;
+	let stopMarkers: any[] = [];
+	let L: any = null;
 	let loading = $state(false);
 	let error = $state('');
 	let locationGranted = $state(false);
@@ -93,6 +93,8 @@
 
 	// Initialize the map
 	function initializeMap(lat: number, lng: number) {
+		if (!L || !browser) return;
+		
 		if (map) {
 			map.remove();
 		}
@@ -125,6 +127,8 @@
 
 	// Add stop markers to the map
 	function addStopMarkers(stops: MuniStop[]) {
+		if (!L || !browser || !map) return;
+		
 		// Clear existing markers
 		stopMarkers.forEach(marker => marker.remove());
 		stopMarkers = [];
@@ -252,19 +256,28 @@
 		}
 	}
 
-	onMount(() => {
-		// Fix for Leaflet marker icons in production
-		delete (L.Icon.Default.prototype as any)._getIconUrl;
-		L.Icon.Default.mergeOptions({
-			iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
-			iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
-			shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
-		});
+	onMount(async () => {
+		if (browser) {
+			// Dynamically import Leaflet only on client-side
+			const leafletModule = await import('leaflet');
+			L = leafletModule.default;
+			
+			// Import Leaflet CSS
+			await import('leaflet/dist/leaflet.css');
 
-		// Check if location was previously granted
-		const wasLocationGranted = loadLocationGranted();
-		if (wasLocationGranted) {
-			requestLocation();
+			// Fix for Leaflet marker icons in production
+			delete (L.Icon.Default.prototype as any)._getIconUrl;
+			L.Icon.Default.mergeOptions({
+				iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
+				iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+				shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+			});
+
+			// Check if location was previously granted
+			const wasLocationGranted = loadLocationGranted();
+			if (wasLocationGranted) {
+				requestLocation();
+			}
 		}
 	});
 </script>
