@@ -197,14 +197,14 @@
 						on:click={addStop}
 						class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
 					>
-						Add Stop
+						Add
 					</button>
 				{:else}
 					<button
 						disabled
 						class="px-4 py-2 bg-gray-300 text-gray-500 rounded-lg cursor-not-allowed text-sm font-medium"
 					>
-						Already Added
+						Added
 					</button>
 				{/if}
 				<button on:click={closeModal} class="text-gray-400 hover:text-gray-600">
