@@ -2,6 +2,7 @@ import type { Stop } from '$lib/types/muni';
 
 const STOPS_KEY = 'muni-stops';
 const REFRESH_INTERVAL_KEY = 'muni-refresh-interval';
+const LOCATION_GRANTED_KEY = 'muni-location-granted';
 
 // Save stops to localStorage
 export function saveStops(stops: Stop[]): void {
@@ -37,4 +38,15 @@ export function loadRefreshInterval(): number {
 		}
 	}
 	return 10; // Default value
+}
+
+// Save location permission status to localStorage
+export function saveLocationGranted(granted: boolean): void {
+	localStorage.setItem(LOCATION_GRANTED_KEY, granted.toString());
+}
+
+// Load location permission status from localStorage
+export function loadLocationGranted(): boolean {
+	const saved = localStorage.getItem(LOCATION_GRANTED_KEY);
+	return saved === 'true';
 }
