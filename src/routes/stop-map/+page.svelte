@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { browser } from '$app/environment';
-	import { MapPin, Navigation, AlertCircle, Loader } from 'lucide-svelte';
+	import { Map, Navigation, AlertCircle, Loader } from 'lucide-svelte';
 	
 	// Import stores and utilities for adding stops
 	import { 
@@ -17,6 +17,7 @@
 	
 	// Import components
 	import StopModal from '$lib/components/StopModal.svelte';
+	import Toast from '$lib/components/Toast.svelte';
 
 	interface MuniStop {
 		stopId: string;
@@ -68,9 +69,9 @@
 		}
 	}
 
-	// Calculate distance between two points in km
+	// Calculate distance between two points in miles
 	function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
-		const R = 6371; // Earth's radius in km
+		const R = 3959; // Earth's radius in miles
 		const dLat = (lat2 - lat1) * Math.PI / 180;
 		const dLng = (lng2 - lng1) * Math.PI / 180;
 		const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
@@ -80,14 +81,14 @@
 		return R * c;
 	}
 
-	// Find stops within a certain radius (default 1km)
-	function findNearbyStops(userLat: number, userLng: number, allStops: MuniStop[], radiusKm = 1): MuniStop[] {
+	// Find stops within a certain radius (default 0.5 miles)
+	function findNearbyStops(userLat: number, userLng: number, allStops: MuniStop[], radiusMiles = 0.5): MuniStop[] {
 		return allStops
 			.map(stop => ({
 				...stop,
 				distance: calculateDistance(userLat, userLng, stop.lat, stop.lng)
 			}))
-			.filter(stop => stop.distance <= radiusKm)
+			.filter(stop => stop.distance <= radiusMiles)
 			.sort((a, b) => a.distance - b.distance);
 	}
 
@@ -174,6 +175,19 @@
 		showModal.set(false);
 		selectedStop.set(null);
 	}
+	
+	// Add stop to saved stops (callback for modal)
+	function onStopAdded() {
+		// The modal has already added the stop to the store and localStorage
+		// No additional action needed here as the main page will pick up changes
+		// via the storage event listener
+		console.log('Stop added successfully from stop-map page');
+	}
+	
+	// Cleanup on component destroy
+	onDestroy(() => {
+		enableScroll();
+	});
 
 	// Toggle route ignore (for modal compatibility)
 	function toggleRouteIgnore(stopCode: string, routeId: string) {
@@ -283,7 +297,7 @@
 </script>
 
 <svelte:head>
-	<title>Find Nearby Stops - Simple Muni Tracker</title>
+	<title>Stop Map - Simple Muni Tracker</title>
 	<meta name="description" content="Find Muni stops near your location with an interactive map" />
 </svelte:head>
 
@@ -292,16 +306,17 @@
 	<header class="bg-white shadow-sm border-b">
 		<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
 			<div class="flex items-center justify-between">
-				<div class="flex items-center space-x-3">
-					<MapPin class="w-6 h-6 text-blue-600" />
-					<h1 class="text-xl font-semibold text-gray-900">Find Nearby Stops</h1>
-				</div>
 				<a 
 					href="/" 
-					class="text-sm text-blue-600 hover:text-blue-800 font-medium"
+					class="text-sm text-primary hover:text-red-800 font-medium"
 				>
 					← Back to Tracker
 				</a>
+				<div class="flex items-center space-x-3">
+					<Map class="w-6 h-6 text-primary" />
+					<h1 class="text-xl font-semibold text-gray-900">Nearby Muni Stops</h1>
+				</div>
+
 			</div>
 		</div>
 	</header>
@@ -311,8 +326,8 @@
 			<!-- Location Permission Request -->
 			<div class="max-w-md mx-auto">
 				<div class="bg-white rounded-lg shadow-sm border p-6 text-center">
-					<div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-						<Navigation class="w-8 h-8 text-blue-600" />
+					<div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+						<Navigation class="w-8 h-8 text-primary" />
 					</div>
 					
 					<h2 class="text-lg font-semibold text-gray-900 mb-2">
@@ -336,7 +351,7 @@
 					<button
 						onclick={requestLocation}
 						disabled={loading}
-						class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+						class="w-full bg-primary text-white py-2 px-4 rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
 					>
 						{#if loading}
 							<Loader class="w-4 h-4 animate-spin" />
@@ -355,25 +370,6 @@
 		{:else}
 			<!-- Map and Results -->
 			<div class="space-y-6">
-				<!-- Stats -->
-				<div class="bg-white rounded-lg shadow-sm border p-4">
-					<div class="flex items-center justify-between">
-						<div class="flex items-center space-x-2">
-							<MapPin class="w-5 h-5 text-green-600" />
-							<span class="text-sm font-medium text-gray-900">
-								Found {nearbyStops.length} stops within 1km
-							</span>
-						</div>
-						<button
-							onclick={requestLocation}
-							disabled={loading}
-							class="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center space-x-1"
-						>
-							<Navigation class="w-4 h-4" />
-							<span>Refresh Location</span>
-						</button>
-					</div>
-				</div>
 
 				<!-- Map -->
 				<div class="bg-white rounded-lg shadow-sm border overflow-hidden">
@@ -405,7 +401,11 @@
 <StopModal 
 	onClose={closeModal}
 	onToggleRouteIgnore={toggleRouteIgnore}
+	onStopAdded={onStopAdded}
 />
+
+<!-- Toast Notifications -->
+<Toast />
 
 <style>
 	:global(.leaflet-container) {

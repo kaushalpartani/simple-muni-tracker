@@ -35,3 +35,8 @@ export const showExportData = writable(false);
 
 // Auto-refresh interval reference
 export const autoRefreshInterval = writable<ReturnType<typeof setInterval> | null>(null);
+
+// Toast notification state
+export const toastMessage = writable('');
+export const toastVisible = writable(false);
+export const toastType = writable<'success' | 'error' | 'info'>('success');

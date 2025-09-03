@@ -1,8 +1,7 @@
 <script lang="ts">
 	import { Search } from 'lucide-svelte';
-	import { error, loading, stops } from '$lib/stores/muniStore';
+	import { stops, loading, showModal, selectedStop } from '$lib/stores/muniStore';
 	import { fetchStopData, transformApiData } from '$lib/utils/muniApi';
-	import { saveStops } from '$lib/utils/localStorage';
 
 	// Props
 	export let onStopAdded: () => void;
@@ -10,35 +9,30 @@
 	// Local state
 	let searchInput = '';
 
-	// Add a new stop
-	async function addStop() {
+	let searchLoading = false;
+	let searchError = '';
+
+	// Search for a stop and open modal
+	async function searchStop() {
 		if (!searchInput.trim()) return;
 
 		const stopCode = searchInput.trim();
 		
-		if ($stops.find(stop => stop.code === stopCode)) {
-			error.set('Stop already saved');
-			return;
-		}
-
-		loading.set(true);
-		error.set('');
+		searchLoading = true;
+		searchError = '';
 
 		try {
 			const data = await fetchStopData(stopCode);
-			const newStop = transformApiData(stopCode, data);
+			const stopData = transformApiData(stopCode, data);
 
-			const updatedStops = [...$stops, newStop];
-			stops.set(updatedStops);
-			saveStops(updatedStops);
+			// Open the modal with the fetched stop data
+			selectedStop.set(stopData);
+			showModal.set(true);
 			searchInput = '';
-			
-			// Notify parent component
-			onStopAdded();
 		} catch (err) {
-			error.set(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+			searchError = err instanceof Error ? err.message : 'Failed to fetch stop data';
 		} finally {
-			loading.set(false);
+			searchLoading = false;
 		}
 	}
 </script>
@@ -52,18 +46,18 @@
 				bind:value={searchInput}
 				placeholder="Enter stop code (e.g., 15247)"
 				class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-				on:keydown={(e) => e.key === 'Enter' && addStop()}
+				on:keydown={(e) => e.key === 'Enter' && searchStop()}
 			/>
 		</div>
 		<button
-			on:click={addStop}
-			disabled={$loading || !searchInput.trim()}
+			on:click={searchStop}
+			disabled={searchLoading || !searchInput.trim()}
 			class="px-6 py-3 bg-primary text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
 		>
-			{$loading ? 'Adding...' : 'Add Stop'}
+			{searchLoading ? 'Searching...' : 'Search Stop'}
 		</button>
 	</div>
-	{#if $error}
-		<p class="text-red-600 text-sm mt-2">{$error}</p>
+	{#if searchError}
+		<p class="text-red-600 text-sm mt-2">{searchError}</p>
 	{/if}
 </div>

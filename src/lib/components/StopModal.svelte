@@ -7,13 +7,42 @@
 		selectedStop, 
 		editingNickname, 
 		nicknameInput,
-		stops 
+		stops,
+		toastMessage,
+		toastVisible,
+		toastType
 	} from '$lib/stores/muniStore';
 	import { saveStops } from '$lib/utils/localStorage';
 
 	// Props
 	export let onClose: () => void;
 	export let onToggleRouteIgnore: (stopCode: string, routeId: string) => void;
+	export let onStopAdded: (() => void) | undefined = undefined;
+	
+	// Check if the current stop is already added
+	$: isStopAdded = $selectedStop ? $stops.some(stop => stop.code === $selectedStop!.code) : false;
+	
+	function addStop() {
+		if (!$selectedStop || isStopAdded) return;
+		
+		const newStops = [...$stops, $selectedStop];
+		stops.set(newStops);
+		saveStops(newStops);
+		
+		// Show success toast
+		const stopName = $selectedStop.nickname || $selectedStop.name;
+		toastMessage.set(`Added "${stopName}" to your stops`);
+		toastType.set('success');
+		toastVisible.set(true);
+		
+		// Call the callback if provided
+		if (onStopAdded) {
+			onStopAdded();
+		}
+		
+		// Close the modal
+		onClose();
+	}
 
 	// Check if route is ignored
 	function isRouteIgnored(stopCode: string, routeId: string): boolean {
@@ -100,69 +129,88 @@
 		>
 			<div class="p-6">
 				<div class="flex justify-between items-start mb-6">
-					<div class="flex-1">
-						{#if $editingNickname === $selectedStop.code}
-							<div class="space-y-3">
-								<input
-									type="text"
-									bind:value={$nicknameInput}
-									placeholder="Enter nickname"
-									class="w-full px-3 py-2 text-lg border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-									on:keydown={(e) => {
-										if (e.key === 'Enter') saveNickname();
-										if (e.key === 'Escape') cancelNicknameEdit();
-									}}
-									on:blur={saveNickname}
-								/>
-								<div class="flex gap-2">
+								<div class="flex-1">
+				{#if $editingNickname === $selectedStop.code}
+					<div class="space-y-3">
+						<input
+							type="text"
+							bind:value={$nicknameInput}
+							placeholder="Enter nickname"
+							class="w-full px-3 py-2 text-lg border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+							on:keydown={(e) => {
+								if (e.key === 'Enter') saveNickname();
+								if (e.key === 'Escape') cancelNicknameEdit();
+							}}
+							on:blur={saveNickname}
+						/>
+						<div class="flex gap-2">
+							<button
+								on:click={saveNickname}
+								class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-red-700"
+							>
+								Save
+							</button>
+							<button
+								on:click={cancelNicknameEdit}
+								class="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400"
+							>
+								Cancel
+							</button>
+						</div>
+					</div>
+				{:else}
+					<div>
+						<h2 class="text-2xl font-medium text-gray-900">
+							{$selectedStop.nickname || $selectedStop.name}
+							{#if $selectedStop.nickname}
+								<span class="text-lg text-gray-500 ml-2">({$selectedStop.name})</span>
+							{/if}
+						</h2>
+						<p class="text-gray-600">Stop {$selectedStop.code}</p>
+						{#if isStopAdded}
+							<div class="flex items-center gap-3 mt-3">
+								<button
+									on:click={() => startEditingNickname($selectedStop.code)}
+									class="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-800"
+									title="Edit nickname"
+								>
+									<Edit class="w-4 h-4" />
+									{$selectedStop?.nickname ? 'Edit' : 'Add'} Nickname
+								</button>
+								{#if $selectedStop?.nickname}
 									<button
-										on:click={saveNickname}
-										class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-red-700"
+										on:click={() => removeNickname($selectedStop.code)}
+										class="text-sm text-red-600 hover:text-red-800"
+										title="Remove nickname"
 									>
-										Save
+										Remove Nickname
 									</button>
-									<button
-										on:click={cancelNicknameEdit}
-										class="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400"
-									>
-										Cancel
-									</button>
-								</div>
-							</div>
-						{:else}
-							<div>
-								<h2 class="text-2xl font-medium text-gray-900">
-									{$selectedStop.nickname || $selectedStop.name}
-									{#if $selectedStop.nickname}
-										<span class="text-lg text-gray-500 ml-2">({$selectedStop.name})</span>
-									{/if}
-								</h2>
-								<p class="text-gray-600">Stop {$selectedStop.code}</p>
-								<div class="flex items-center gap-3 mt-3">
-									<button
-										on:click={() => startEditingNickname($selectedStop.code)}
-										class="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-800"
-										title="Edit nickname"
-									>
-										<Edit class="w-4 h-4" />
-										{$selectedStop?.nickname ? 'Edit' : 'Add'} Nickname
-									</button>
-									{#if $selectedStop?.nickname}
-										<button
-											on:click={() => removeNickname($selectedStop.code)}
-											class="text-sm text-red-600 hover:text-red-800"
-											title="Remove nickname"
-										>
-											Remove Nickname
-										</button>
-									{/if}
-								</div>
+								{/if}
 							</div>
 						{/if}
 					</div>
-					<button on:click={closeModal} class="text-gray-400 hover:text-gray-600">
-						<X class="w-6 h-6" />
+				{/if}
+			</div>
+			<div class="flex items-center space-x-2">
+				{#if !isStopAdded}
+					<button
+						on:click={addStop}
+						class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
+					>
+						Add Stop
 					</button>
+				{:else}
+					<button
+						disabled
+						class="px-4 py-2 bg-gray-300 text-gray-500 rounded-lg cursor-not-allowed text-sm font-medium"
+					>
+						Already Added
+					</button>
+				{/if}
+				<button on:click={closeModal} class="text-gray-400 hover:text-gray-600">
+					<X class="w-6 h-6" />
+				</button>
+			</div>
 				</div>
 
 				<div class="space-y-6">

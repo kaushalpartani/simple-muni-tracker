@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { Settings, HelpCircle } from 'lucide-svelte';
+	import { Settings, HelpCircle, Map } from 'lucide-svelte';
 	
 	// Import components
 	import SearchBar from '$lib/components/SearchBar.svelte';
@@ -8,6 +8,7 @@
 	import StopModal from '$lib/components/StopModal.svelte';
 	import SettingsModal from '$lib/components/SettingsModal.svelte';
 	import ExportModal from '$lib/components/ExportModal.svelte';
+	import Toast from '$lib/components/Toast.svelte';
 	
 	// Import stores
 	import { 
@@ -58,6 +59,61 @@
 		if (savedStops.length > 0) {
 			startAutoRefresh();
 		}
+
+		// Function to sync stops from localStorage
+		const syncStopsFromStorage = () => {
+			const currentStops = loadStops();
+			const currentStopCodes = new Set($stops.map(s => s.code));
+			const storageStopCodes = new Set(currentStops.map(s => s.code));
+			
+			// Check if there are differences between current store and localStorage
+			const hasChanges = currentStops.length !== $stops.length || 
+				!currentStops.every(stop => currentStopCodes.has(stop.code)) ||
+				!$stops.every(stop => storageStopCodes.has(stop.code));
+			
+			if (hasChanges) {
+				stops.set(currentStops);
+				
+				// Start auto-refresh if we now have stops and it's not already running
+				if (currentStops.length > 0 && !$autoRefreshInterval) {
+					startAutoRefresh();
+				}
+				// Stop auto-refresh if no stops remain
+				else if (currentStops.length === 0 && $autoRefreshInterval) {
+					stopAutoRefresh();
+				}
+			}
+		};
+
+		// Listen for storage changes from other tabs/pages
+		const handleStorageChange = (e: StorageEvent) => {
+			if (e.key === 'muni-stops') {
+				syncStopsFromStorage();
+			}
+		};
+
+		// Listen for page visibility changes to sync when user returns to this page
+		const handleVisibilityChange = () => {
+			if (!document.hidden) {
+				syncStopsFromStorage();
+			}
+		};
+
+		// Listen for focus events to sync when user returns to this tab
+		const handleFocus = () => {
+			syncStopsFromStorage();
+		};
+
+		window.addEventListener('storage', handleStorageChange);
+		document.addEventListener('visibilitychange', handleVisibilityChange);
+		window.addEventListener('focus', handleFocus);
+		
+		// Cleanup function
+		return () => {
+			window.removeEventListener('storage', handleStorageChange);
+			document.removeEventListener('visibilitychange', handleVisibilityChange);
+			window.removeEventListener('focus', handleFocus);
+		};
 	});
 
 	// Cleanup on component destroy
@@ -377,6 +433,15 @@
 				<Settings class="w-5 h-5 md:w-6 md:h-6" />
 			</button>
 			
+			<!-- Map Link -->
+			<a
+				href="/stop-map"
+				class="absolute right-12 top-0 p-2 text-gray-400 hover:text-gray-600 transition-colors"
+				title="Browse stops on map"
+			>
+				<Map class="w-5 h-5 md:w-6 md:h-6" />
+			</a>
+			
 			<!-- Help Icon -->
 			<a
 				href="https://www.sfmta.com/find-a-stop"
@@ -454,7 +519,7 @@
 		{:else}
 			<div class="text-center py-12">
 				<p class="text-gray-600 mb-4">No stops saved yet</p>
-				<p class="text-sm text-gray-500">Add a stop code to get started</p>
+				<p class="text-sm text-gray-500"><a href="/stop-map" class="text-primary hover:underline">Browse stops on the map</a></p>
 			</div>
 		{/if}
 	</div>
@@ -464,6 +529,7 @@
 <StopModal 
 	onClose={closeModal}
 	onToggleRouteIgnore={toggleRouteIgnore}
+	onStopAdded={onStopAdded}
 />
 
 <SettingsModal
@@ -474,3 +540,6 @@
 />
 
 <ExportModal onClose={closeExportData} />
+
+<!-- Toast Notifications -->
+<Toast />
