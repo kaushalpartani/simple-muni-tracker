@@ -375,7 +375,8 @@
 				<div class="bg-white rounded-lg shadow-sm border overflow-hidden">
 					<div 
 						bind:this={mapContainer}
-						class="w-full h-96 relative"
+						class="w-full relative"
+						style="height: calc(100vh - 200px); min-height: 400px;"
 					>
 						<!-- Map loads here -->
 					</div>
