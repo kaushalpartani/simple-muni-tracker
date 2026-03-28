@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { X } from 'lucide-svelte';
 	import { showExportData, exportData } from '$lib/stores/muniStore';
+	let copyText = $state('Copy');
 
 	// Props
-	export let onClose: () => void;
+	let { onClose }: { onClose: () => void } = $props();
 
 	// Copy to clipboard
 	function copyToClipboard() {
@@ -47,7 +48,7 @@
 
 			<div class="space-y-4">
 				<p class="text-sm text-gray-600">
-					Copy this base64 encoded data to share your stops across devices:
+					Copy this data to share your stops across devices:
 				</p>
 				
 				<div class="relative">
@@ -59,9 +60,10 @@
 					></textarea>
 					<button
 						on:click={copyToClipboard}
+						on:click={() => copyText = "Copied!"}
 						class="absolute top-2 right-2 px-3 py-1 bg-primary text-white text-xs rounded hover:bg-red-700"
 					>
-						Copy
+						{copyText}
 					</button>
 				</div>
 

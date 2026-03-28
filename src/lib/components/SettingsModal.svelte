@@ -99,7 +99,7 @@
 						</p>
 						<textarea
 							bind:value={$importData}
-							placeholder="Paste base64 encoded data here..."
+							placeholder="Paste data here..."
 							rows="4"
 							class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
 						></textarea>

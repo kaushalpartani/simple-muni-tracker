@@ -50,7 +50,7 @@
 		if (savedStops.length > 0) {
 			stops.set(savedStops);
 		}
-		
+				
 		// Load saved refresh interval
 		const savedInterval = loadRefreshInterval();
 		refreshIntervalSeconds.set(savedInterval);
@@ -108,6 +108,7 @@
 		document.addEventListener('visibilitychange', handleVisibilityChange);
 		window.addEventListener('focus', handleFocus);
 		
+		refreshAll();
 		// Cleanup function
 		return () => {
 			window.removeEventListener('storage', handleStorageChange);
@@ -336,24 +337,19 @@
 	// Import/Export functions
 	function exportState() {
 		const jsonString = JSON.stringify($stops);
-		// Convert to base64 for easy copying
-		const base64 = btoa(jsonString);
-		exportData.set(base64);
+		exportData.set(jsonString);
 		showExportData.set(true);
 	}
 
 	function importState() {
-		if (!$importData.trim()) {
+		if (!$importData) {
 			importError.set('Please enter data to import');
 			return;
 		}
 
 		try {
-			// Decode from base64 first
-			const decoded = atob($importData.trim());
-			
 			// Parse the JSON
-			const importedStops = JSON.parse(decoded);
+			const importedStops = JSON.parse($importData);
 			
 			// Validate the structure
 			if (!Array.isArray(importedStops)) {
@@ -386,7 +382,7 @@
 			// Close the modal
 			showSettingsModal.set(false);
 		} catch (err) {
-			importError.set(`Import failed: ${err instanceof Error ? err.message : 'Invalid base64 data'}`);
+			importError.set(`Import failed: ${err instanceof Error ? err.message : 'Invalid data'}`);
 		}
 	}
 
