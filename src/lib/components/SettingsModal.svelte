@@ -41,7 +41,7 @@
 		tabindex="-1"
 	>
 		<div 
-			class="bg-white rounded-lg max-w-md w-full p-6" 
+			class="bg-white rounded-lg max-w-md w-full p-6 max-h-[85vh] overflow-y-auto" 
 			on:click|stopPropagation
 			role="document"
 		>
