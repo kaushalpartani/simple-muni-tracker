@@ -7,6 +7,7 @@ export const loading = writable(false);
 export const error = writable('');
 export const lastRefreshTime = writable(new Date());
 export const refreshIntervalSeconds = writable(10);
+export const sortByDistanceEnabled = writable(false);
 
 // Modal states
 export const showModal = writable(false);

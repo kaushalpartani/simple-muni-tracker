@@ -16,6 +16,7 @@
 		loading, 
 		lastRefreshTime, 
 		refreshIntervalSeconds, 
+		sortByDistanceEnabled,
 		reorderMode,
 		draggedIndex,
 		draggedOverIndex,
@@ -26,14 +27,146 @@
 		importError,
 		exportData,
 		showExportData,
-		autoRefreshInterval
+		autoRefreshInterval,
+		toastMessage,
+		toastVisible,
+		toastType
 	} from '$lib/stores/muniStore';
 	
 	// Import utilities
-	import { loadStops, loadRefreshInterval, saveStops } from '$lib/utils/localStorage';
+	import { 
+		loadStops, 
+		loadRefreshInterval, 
+		saveStops,
+		loadSortByDistanceEnabled,
+		saveSortByDistanceEnabled,
+		saveLocationGranted
+	} from '$lib/utils/localStorage';
 	import { refreshAllStops } from '$lib/utils/muniApi';
 	import { formatLastRefresh } from '$lib/utils/formatters';
 	import { disableScroll, enableScroll } from '$lib/utils/scrollManager';
+
+	interface StopCoordinates {
+		lat: number;
+		lng: number;
+	}
+
+	let currentLocation: StopCoordinates | null = $state(null);
+	let stopCoordinatesByCode: Record<string, StopCoordinates> = $state({});
+
+	function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+		const R = 3959;
+		const dLat = ((lat2 - lat1) * Math.PI) / 180;
+		const dLng = ((lng2 - lng1) * Math.PI) / 180;
+		const a =
+			Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+			Math.cos((lat1 * Math.PI) / 180) *
+				Math.cos((lat2 * Math.PI) / 180) *
+				Math.sin(dLng / 2) *
+				Math.sin(dLng / 2);
+		const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+		return R * c;
+	}
+
+	async function loadStopCoordinates(): Promise<void> {
+		try {
+			const response = await fetch('/muni_stops.csv');
+			const csvText = await response.text();
+			const lines = csvText.trim().split('\n').slice(1);
+			const parsedCoordinates: Record<string, StopCoordinates> = {};
+
+			for (const line of lines) {
+				const [stopIdRaw, shape] = line.split(',');
+				const coords = shape?.match(/POINT \(([^)]+)\)/);
+				if (!coords) continue;
+				const [lng, lat] = coords[1].split(' ').map(Number);
+				const prefixedCode = `1${stopIdRaw}`;
+				parsedCoordinates[stopIdRaw] = { lat, lng };
+				parsedCoordinates[prefixedCode] = { lat, lng };
+			}
+
+			stopCoordinatesByCode = parsedCoordinates;
+		} catch (err) {
+			console.error('Failed to load stop coordinates for distance sorting:', err);
+		}
+	}
+
+	async function requestCurrentLocation(): Promise<boolean> {
+		if (!navigator.geolocation) {
+			toastMessage.set('Geolocation is not supported by this browser.');
+			toastType.set('error');
+			toastVisible.set(true);
+			return false;
+		}
+
+		try {
+			const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+				navigator.geolocation.getCurrentPosition(resolve, reject, {
+					enableHighAccuracy: true,
+					timeout: 10000,
+					maximumAge: 30000
+				});
+			});
+
+			currentLocation = {
+				lat: position.coords.latitude,
+				lng: position.coords.longitude
+			};
+			saveLocationGranted(true);
+			return true;
+		} catch (err: any) {
+			saveLocationGranted(false);
+			const errorMessage =
+				err?.code === 1
+					? 'Location access denied. Enable "Always allow" in browser settings to sort by distance.'
+					: 'Unable to get current location for distance sorting.';
+			toastMessage.set(errorMessage);
+			toastType.set('error');
+			toastVisible.set(true);
+			return false;
+		}
+	}
+
+	async function onToggleDistanceSort(enabled: boolean): Promise<void> {
+		if (enabled) {
+			toastMessage.set('Please choose "Always allow" when your browser asks for location permission.');
+			toastType.set('info');
+			toastVisible.set(true);
+
+			const granted = await requestCurrentLocation();
+			if (!granted) {
+				sortByDistanceEnabled.set(false);
+				saveSortByDistanceEnabled(false);
+				return;
+			}
+
+			if ($reorderMode) {
+				reorderMode.set(false);
+			}
+		}
+
+		sortByDistanceEnabled.set(enabled);
+		saveSortByDistanceEnabled(enabled);
+	}
+
+	let displayStops = $derived.by(() => {
+		const location = currentLocation;
+		if (!$sortByDistanceEnabled || !location || Object.keys(stopCoordinatesByCode).length === 0) {
+			return $stops;
+		}
+
+		return [...$stops].sort((a, b) => {
+			const aCoords = stopCoordinatesByCode[a.code];
+			const bCoords = stopCoordinatesByCode[b.code];
+			if (!aCoords && !bCoords) return 0;
+			if (!aCoords) return 1;
+			if (!bCoords) return -1;
+
+			const distanceA = calculateDistance(location.lat, location.lng, aCoords.lat, aCoords.lng);
+			const distanceB = calculateDistance(location.lat, location.lng, bCoords.lat, bCoords.lng);
+			return distanceA - distanceB;
+		});
+	});
 
 	// Reactive statements to handle modal state changes
 	$effect(() => {
@@ -49,6 +182,13 @@
 		const savedStops = loadStops();
 		if (savedStops.length > 0) {
 			stops.set(savedStops);
+		}
+
+		const savedSortByDistance = loadSortByDistanceEnabled();
+		sortByDistanceEnabled.set(savedSortByDistance);
+		loadStopCoordinates();
+		if (savedSortByDistance) {
+			requestCurrentLocation();
 		}
 				
 		// Load saved refresh interval
@@ -155,6 +295,9 @@
 		const updatedStops = await refreshAllStops($stops);
 		stops.set(updatedStops);
 		saveStops(updatedStops);
+		if ($sortByDistanceEnabled) {
+			await requestCurrentLocation();
+		}
 		loading.set(false);
 		lastRefreshTime.set(new Date());
 		
@@ -198,6 +341,12 @@
 
 	// Toggle reorder mode
 	function toggleReorderMode() {
+		if ($sortByDistanceEnabled) {
+			toastMessage.set('Disable distance sorting to reorder tiles manually.');
+			toastType.set('info');
+			toastVisible.set(true);
+			return;
+		}
 		reorderMode.set(!$reorderMode);
 	}
 
@@ -471,7 +620,8 @@
 				<!-- Reorder toggle button -->
 				<button
 					on:click={toggleReorderMode}
-					class="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors {$reorderMode ? 'bg-primary text-white border-primary hover:bg-red-700' : 'bg-white text-gray-700'}"
+					disabled={$sortByDistanceEnabled}
+					class="px-4 py-2 text-sm border border-gray-300 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed {$reorderMode ? 'bg-primary text-white border-primary hover:bg-red-700' : 'bg-white text-gray-700 hover:bg-gray-50'}"
 				>
 					{$reorderMode ? 'Exit Reorder Mode' : 'Reorder Tiles'}
 				</button>
@@ -481,7 +631,7 @@
 		<!-- Stops Grid -->
 		{#if $stops.length > 0}
 			<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-				{#each $stops as stop, index (stop.code)}
+				{#each displayStops as stop, index (stop.code)}
 					<StopCard
 						{stop}
 						{index}
@@ -519,6 +669,7 @@
 
 <SettingsModal
 	onUpdateRefreshInterval={updateRefreshInterval}
+	onToggleDistanceSort={onToggleDistanceSort}
 	onExportState={exportState}
 	onImportState={importState}
 	onClearImportForm={clearImportForm}

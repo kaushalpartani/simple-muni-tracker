@@ -3,6 +3,7 @@ import type { Stop } from '$lib/types/muni';
 const STOPS_KEY = 'muni-stops';
 const REFRESH_INTERVAL_KEY = 'muni-refresh-interval';
 const LOCATION_GRANTED_KEY = 'muni-location-granted';
+const SORT_BY_DISTANCE_KEY = 'muni-sort-by-distance';
 
 // Save stops to localStorage
 export function saveStops(stops: Stop[]): void {
@@ -48,5 +49,16 @@ export function saveLocationGranted(granted: boolean): void {
 // Load location permission status from localStorage
 export function loadLocationGranted(): boolean {
 	const saved = localStorage.getItem(LOCATION_GRANTED_KEY);
+	return saved === 'true';
+}
+
+// Save distance sorting preference
+export function saveSortByDistanceEnabled(enabled: boolean): void {
+	localStorage.setItem(SORT_BY_DISTANCE_KEY, enabled.toString());
+}
+
+// Load distance sorting preference
+export function loadSortByDistanceEnabled(): boolean {
+	const saved = localStorage.getItem(SORT_BY_DISTANCE_KEY);
 	return saved === 'true';
 }

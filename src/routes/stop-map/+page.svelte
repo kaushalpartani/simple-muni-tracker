@@ -35,6 +35,7 @@
 	let locationGranted = $state(false);
 	let userLocation: { lat: number; lng: number } | null = $state(null);
 	let nearbyStops: MuniStop[] = $state([]);
+	let allMuniStops: MuniStop[] = [];
 
 	// Reactive statement to handle modal state changes
 	$effect(() => {
@@ -92,6 +93,22 @@
 			.sort((a, b) => a.distance - b.distance);
 	}
 
+	// Keep stop loading focused near map center. Tighter zoom => smaller radius.
+	function getSearchRadiusMiles(zoom: number): number {
+		if (zoom >= 17) return 0.25;
+		if (zoom >= 15) return 0.4;
+		if (zoom >= 13) return 0.6;
+		return 0.8;
+	}
+
+	function updateStopsAroundMapCenter() {
+		if (!map || allMuniStops.length === 0) return;
+		const center = map.getCenter();
+		const radiusMiles = getSearchRadiusMiles(map.getZoom());
+		nearbyStops = findNearbyStops(center.lat, center.lng, allMuniStops, radiusMiles);
+		addStopMarkers(nearbyStops);
+	}
+
 	// Initialize the map
 	function initializeMap(lat: number, lng: number) {
 		if (!L || !browser) return;
@@ -124,6 +141,10 @@
 		userMarker = L.marker([lat, lng], { icon: userIcon })
 			.addTo(map)
 			.bindPopup('Your location');
+
+		// Dynamically refresh stop markers as user explores the map.
+		map.on('moveend', updateStopsAroundMapCenter);
+		map.on('zoomend', updateStopsAroundMapCenter);
 	}
 
 	// Add stop markers to the map
@@ -243,15 +264,14 @@
 			locationGranted = true;
 			saveLocationGranted(true);
 			
-			// Load all stops and find nearby ones
-			const allStops = await loadMuniStops();
-			nearbyStops = findNearbyStops(userLocation.lat, userLocation.lng, allStops);
+			// Load all stops once and keep filtering by map center.
+			allMuniStops = await loadMuniStops();
 
 			// Initialize map with user location
 			initializeMap(userLocation.lat, userLocation.lng);
 			
-			// Add stop markers
-			addStopMarkers(nearbyStops);
+			// Add initial markers near current center.
+			updateStopsAroundMapCenter();
 
 		} catch (err: any) {
 			console.error('Error getting location:', err);

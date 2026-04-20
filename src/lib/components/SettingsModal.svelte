@@ -3,6 +3,7 @@
 	import { 
 		showSettingsModal, 
 		refreshIntervalSeconds, 
+		sortByDistanceEnabled,
 		importData, 
 		importError, 
 		exportData, 
@@ -12,6 +13,7 @@
 
 	// Props
 	export let onUpdateRefreshInterval: () => void;
+	export let onToggleDistanceSort: (enabled: boolean) => Promise<void>;
 	export let onExportState: () => void;
 	export let onImportState: () => void;
 	export let onClearImportForm: () => void;
@@ -65,6 +67,30 @@
 						class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
 					/>
 					<p class="text-xs text-gray-500 mt-1">Range: 5-60 seconds</p>
+				</div>
+
+				<!-- Distance sort toggle -->
+				<div class="border-t pt-6">
+					<div class="flex items-center justify-between">
+						<div class="pr-4">
+							<h3 class="text-sm font-medium text-gray-900">Sort home panes by distance</h3>
+							<p class="text-xs text-gray-500 mt-1">
+								Requires browser location permission set to "Always allow".
+							</p>
+						</div>
+						<button
+							type="button"
+							role="switch"
+							aria-checked={$sortByDistanceEnabled}
+							aria-label="Toggle distance sorting"
+							on:click={() => onToggleDistanceSort(!$sortByDistanceEnabled)}
+							class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors {$sortByDistanceEnabled ? 'bg-primary' : 'bg-gray-300'}"
+						>
+							<span
+								class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform {$sortByDistanceEnabled ? 'translate-x-6' : 'translate-x-1'}"
+							></span>
+						</button>
+					</div>
 				</div>
 
 				<!-- Import/Export section -->
