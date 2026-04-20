@@ -59,18 +59,5 @@ export async function refreshStop(stop: Stop): Promise<Stop> {
 
 // Refresh all stops
 export async function refreshAllStops(stops: Stop[]): Promise<Stop[]> {
-	const updatedStops: Stop[] = [];
-	
-	for (const stop of stops) {
-		try {
-			const updatedStop = await refreshStop(stop);
-			updatedStops.push(updatedStop);
-		} catch (err) {
-			console.error(`Error refreshing stop ${stop.code}:`, err);
-			// Keep the original stop if refresh fails
-			updatedStops.push(stop);
-		}
-	}
-	
-	return updatedStops;
+	return await Promise.all(stops.map(stop => refreshStop(stop)));
 }
