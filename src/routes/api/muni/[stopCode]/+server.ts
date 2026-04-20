@@ -1,10 +1,14 @@
 import { json } from '@sveltejs/kit';
-import type { RequestHandler } from './$types';
+import type { RequestHandler } from '@sveltejs/kit';
 
 export const GET: RequestHandler = async ({ params }) => {
 	const stopCode = params.stopCode;
-	const API_KEY = '0be8ebd0284ce712a63f29dcaf7798c4';
-	const API_URL = `https://webservices.umoiq.com/api/pub/v1/agencies/sfmta-cis/stopcodes/${stopCode}/predictions?key=${API_KEY}`;
+	const apiKey = process.env.UMO_IQ_API_KEY;
+	if (!apiKey) {
+		console.error('UMO_IQ_API_KEY is not set');
+		return json({ error: 'Server configuration error' }, { status: 500 });
+	}
+	const API_URL = `https://webservices.umoiq.com/api/pub/v1/agencies/sfmta-cis/stopcodes/${stopCode}/predictions?key=${apiKey}`;
 
 	try {
 		const response = await fetch(API_URL);
