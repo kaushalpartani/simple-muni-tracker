@@ -608,9 +608,9 @@
 				<!-- Auto-refresh status -->
 				<div class="text-sm text-gray-600">
 					{#if $autoRefreshInterval}
-						<span class="text-green-600">🔄 Auto-refresh active ({$refreshIntervalSeconds}s)</span>
+						<span class="text-green-600">Auto-refresh active ({$refreshIntervalSeconds}s)</span>
 					{:else}
-						<span class="text-gray-500">⏸️ Auto-refresh paused</span>
+						<span class="text-gray-500">Auto-refresh paused</span>
 					{/if}
 					{#if $lastRefreshTime}
 						<span class="ml-2">• Last updated: {formatLastRefresh($lastRefreshTime)}</span>
