@@ -270,8 +270,13 @@
 	function startAutoRefresh() {
 		if ($autoRefreshInterval) {
 			clearInterval($autoRefreshInterval);
+			autoRefreshInterval.set(null);
 		}
-		
+
+		if ($refreshIntervalSeconds <= 0) {
+			return;
+		}
+
 		const interval = setInterval(async () => {
 			if ($stops.length > 0 && !$loading) {
 				await refreshAll();
@@ -292,21 +297,28 @@
 	// Refresh all stops
 	async function refreshAll() {
 		loading.set(true);
-		const updatedStops = await refreshAllStops($stops);
-		stops.set(updatedStops);
-		saveStops(updatedStops);
-		if ($sortByDistanceEnabled) {
-			await requestCurrentLocation();
-		}
-		loading.set(false);
-		lastRefreshTime.set(new Date());
-		
-		// Update selectedStop if modal is open to reflect refreshed data
-		if ($selectedStop) {
-			const refreshedStop = updatedStops.find(s => s.code === $selectedStop!.code);
-			if (refreshedStop) {
-				selectedStop.set(refreshedStop);
+		try {
+			const updatedStops = await refreshAllStops($stops);
+			stops.set(updatedStops);
+			saveStops(updatedStops);
+			if ($sortByDistanceEnabled) {
+				await requestCurrentLocation();
 			}
+			lastRefreshTime.set(new Date());
+
+			// Update selectedStop if modal is open to reflect refreshed data
+			if ($selectedStop) {
+				const refreshedStop = updatedStops.find(s => s.code === $selectedStop!.code);
+				if (refreshedStop) {
+					selectedStop.set(refreshedStop);
+				}
+			}
+		} catch (err) {
+			toastMessage.set(err instanceof Error ? err.message : 'Failed to refresh stops.');
+			toastType.set('error');
+			toastVisible.set(true);
+		} finally {
+			loading.set(false);
 		}
 	}
 

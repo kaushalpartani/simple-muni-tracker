@@ -34,7 +34,7 @@ export function loadRefreshInterval(): number {
 	const saved = localStorage.getItem(REFRESH_INTERVAL_KEY);
 	if (saved) {
 		const parsed = parseInt(saved);
-		if (!isNaN(parsed) && parsed >= 5 && parsed <= 60) {
+		if (!isNaN(parsed) && (parsed === 0 || (parsed >= 5 && parsed <= 60))) {
 			return parsed;
 		}
 	}

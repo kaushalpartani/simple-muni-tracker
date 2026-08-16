@@ -18,6 +18,15 @@
 	export let onImportState: () => void;
 	export let onClearImportForm: () => void;
 
+	const MIN_REFRESH_INTERVAL = 5;
+	const MAX_REFRESH_INTERVAL = 60;
+
+	$: refreshIntervalError =
+		$refreshIntervalSeconds !== 0 &&
+		($refreshIntervalSeconds < MIN_REFRESH_INTERVAL || $refreshIntervalSeconds > MAX_REFRESH_INTERVAL)
+			? `Must be 0 (off) or between ${MIN_REFRESH_INTERVAL} and ${MAX_REFRESH_INTERVAL} seconds`
+			: '';
+
 	// Close settings modal
 	function closeSettingsModal() {
 		showSettingsModal.set(false);
@@ -25,6 +34,7 @@
 
 	// Update refresh interval
 	function updateRefreshInterval() {
+		if (refreshIntervalError) return;
 		saveRefreshInterval($refreshIntervalSeconds);
 		onUpdateRefreshInterval();
 		closeSettingsModal();
@@ -61,12 +71,16 @@
 					<input
 						id="refresh-interval"
 						type="number"
-						min="5"
+						min="0"
 						max="60"
 						bind:value={$refreshIntervalSeconds}
-						class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+						class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:border-transparent {refreshIntervalError ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-primary'}"
 					/>
-					<p class="text-xs text-gray-500 mt-1">Range: 5-60 seconds</p>
+					{#if refreshIntervalError}
+						<p class="text-red-600 text-xs mt-1">{refreshIntervalError}</p>
+					{:else}
+						<p class="text-xs text-gray-500 mt-1">Range: 5-60 seconds, or 0 to turn off auto-refresh</p>
+					{/if}
 				</div>
 
 				<!-- Distance sort toggle -->
@@ -158,7 +172,8 @@
 					</button>
 					<button
 						on:click={updateRefreshInterval}
-						class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-red-700"
+						disabled={!!refreshIntervalError}
+						class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-primary"
 					>
 						Save
 					</button>
