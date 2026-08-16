@@ -236,12 +236,18 @@
 		const handleVisibilityChange = () => {
 			if (!document.hidden) {
 				syncStopsFromStorage();
+				if ($stops.length > 0 && !$loading) {
+					refreshAll();
+				}
 			}
 		};
 
 		// Listen for focus events to sync when user returns to this tab
 		const handleFocus = () => {
 			syncStopsFromStorage();
+			if ($stops.length > 0 && !$loading) {
+				refreshAll();
+			}
 		};
 
 		window.addEventListener('storage', handleStorageChange);
